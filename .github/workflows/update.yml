@@ -1,0 +1,42 @@
+name: Auto Scrape ProjectJAV
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # 6시간마다 자동 업데이트
+  workflow_dispatch:      # 수동 즉시 실행 버튼 활성화
+  push:
+    paths:
+      - 'scraper.py'
+      - '.github/workflows/update.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies & Headless Browser
+        run: |
+          pip install cloudscraper beautifulsoup4 playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run Scraper
+        run: python scraper.py
+
+      - name: Commit and Push data.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git diff --staged --quiet || git commit -m "Update daily data.json"
+          git push
