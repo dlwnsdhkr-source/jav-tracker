@@ -11,6 +11,8 @@
   <meta name="apple-mobile-web-app-title" content="UpdateApp">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0f172a">
+  <!-- 이미지 핫링크 차단 방지 전역 설정 -->
+  <meta name="referrer" content="no-referrer">
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -35,108 +37,14 @@
         <span class="text-xl">⚡</span>
         <div>
           <h1 class="font-extrabold text-base text-white leading-tight">ProjectJAV 업데이터</h1>
-          <p id="status-text" class="text-[11px] text-slate-400">일자별 업데이트 및 첨부파일 추출</p>
+          <p id="status-text" class="text-[11px] text-slate-400">캐시 데이터 준비 중...</p>
         </div>
       </div>
       <div class="flex items-center space-x-1.5">
-            // 사이트 목록 페이지 파싱 (캐시 우선 로드 적용)
-    async function fetchBoardData(isManual = false) {
-      const loadingBox = document.getElementById('loading-box');
-      
-      // 저장된 캐시가 있다면 수동 새로고침이 아닐 때 즉시 먼저 렌더링
-      const cached = localStorage.getItem('pjav_cached_items_' + currentPage);
-      if (cached && !isManual && allItems.length === 0) {
-        allItems = JSON.parse(cached);
-        renderDateTabs();
-        renderItems();
-      } else if (!cached || isManual) {
-        loadingBox.classList.remove('hidden');
-      }
-
-      try {
-        const pageUrl = currentPage === 1 ? baseUrl : `${baseUrl}/?page=${currentPage}`;
-        const html = await fetchHtmlWithFallback(pageUrl);
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-
-        const parsedItems = [];
-        const seenLinks = new Set();
-        const dateRegex = /(20\d{2}[-./]\d{1,2}[-./]\d{1,2})|(\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+20\d{2}\b)|(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*20\d{2}\b)|(\b\d{2}[-./]\d{2}\b)/i;
-
-        const containers = doc.querySelectorAll('tr, article, .post, .item, .card, li, .row');
-
-        containers.forEach((el) => {
-          const links = Array.from(el.querySelectorAll('a[href]'));
-          if (links.length === 0) return;
-
-          const mainLink = links.find(a => {
-            const href = a.getAttribute('href') || '';
-            const txt = a.textContent.trim();
-            return txt.length >= 4 && !href.startsWith('javascript') && !href.startsWith('#') && !href.startsWith('magnet:');
-          });
-
-          if (!mainLink) return;
-
-          let fullUrl = mainLink.getAttribute('href');
-          if (fullUrl.startsWith('/')) fullUrl = baseUrl.replace(/\/$/, '') + fullUrl;
-          else if (!fullUrl.startsWith('http')) fullUrl = baseUrl.replace(/\/$/, '') + '/' + fullUrl;
-
-          if (seenLinks.has(fullUrl)) return;
-
-          const title = mainLink.textContent.trim().replace(/\s+/g, ' ');
-          if (title.length < 3) return;
-
-          const blockText = el.textContent || '';
-          const dateMatch = blockText.match(dateRegex);
-          const dateStr = dateMatch ? dateMatch[0] : '최근 업데이트';
-
-          const directDownloads = [];
-          links.forEach(a => {
-            const h = a.getAttribute('href') || '';
-            const t = a.textContent.trim() || '첨부파일';
-            if (h.startsWith('magnet:') || /\.(torrent|zip|rar|7z|mp4|mkv|srt|ass)(\?|$)/i.test(h) || /download|dl|torrent|magnet/i.test(h)) {
-              let dlUrl = h;
-              if (dlUrl.startsWith('/')) dlUrl = baseUrl.replace(/\/$/, '') + dlUrl;
-              directDownloads.push({ label: t || '다운로드', url: dlUrl });
-            }
-          });
-
-          const imgEl = el.querySelector('img');
-          let thumb = imgEl ? (imgEl.getAttribute('data-src') || imgEl.getAttribute('src') || '') : '';
-          if (thumb && thumb.startsWith('/')) thumb = baseUrl.replace(/\/$/, '') + thumb;
-
-          seenLinks.add(fullUrl);
-          parsedItems.push({
-            id: btoa(encodeURIComponent(fullUrl)).slice(0, 16),
-            title,
-            url: fullUrl,
-            date: dateStr,
-            thumb,
-            directDownloads
-          });
-        });
-
-        if (parsedItems.length > 0) {
-          allItems = parsedItems;
-          // 성공 시 로컬 캐시에 저장
-          localStorage.setItem('pjav_cached_items_' + currentPage, JSON.stringify(allItems));
-          renderDateTabs();
-          renderItems();
-        }
-      } catch (err) {
-        if (!cached) {
-          document.getElementById('items-container').innerHTML = `
-            <div class="bg-rose-950/50 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200 space-y-2">
-              <p class="font-extrabold text-sm">⚠️ 데이터를 가져오지 못했습니다 (${err.message})</p>
-              <p class="text-rose-300">상단 [⚙️ 설정]에서 프록시를 변경해 보세요.</p>
-            </div>
-          `;
-        }
-      } finally {
-        loadingBox.classList.add('hidden');
-      }
-    }
-
+        <button onclick="fetchBoardData(true)" id="refresh-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow active:scale-95 transition flex items-center space-x-1">
+          <span id="refresh-icon">🔄</span>
+          <span>새로고침</span>
+        </button>
         <button onclick="openSettings()" class="p-2 text-slate-400 hover:text-white rounded-full text-lg">⚙️</button>
       </div>
     </div>
@@ -147,25 +55,25 @@
 
     <!-- 검색 및 페이지 이동 바 -->
     <div class="flex space-x-2">
-      <input type="text" id="search-input" oninput="renderItems()" placeholder="품번, 제목, 키워드 실시간 필터..." class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none">
+      <input type="text" id="search-input" oninput="renderItems()" placeholder="품번, 제목, 날짜 실시간 검색..." class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none">
       <button onclick="changePage(-1)" class="bg-slate-800 border border-slate-700 px-3 rounded-xl text-xs font-bold text-slate-300 active:scale-95">◀</button>
       <span id="page-indicator" class="bg-slate-800 border border-slate-700 px-3 py-2.5 rounded-xl text-xs font-extrabold text-indigo-400">1P</span>
       <button onclick="changePage(1)" class="bg-slate-800 border border-slate-700 px-3 rounded-xl text-xs font-bold text-slate-300 active:scale-95">▶</button>
     </div>
 
-    <!-- 일자별 탭 필터 (자동 생성) -->
+    <!-- 일자별 탭 필터 -->
     <div id="date-tabs" class="flex space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
       <button onclick="setDateFilter('ALL')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-indigo-600 text-white shrink-0">전체 일자</button>
     </div>
 
-    <!-- 로딩 스피너 -->
+    <!-- 초기 로딩 스피너 (캐시가 없을 때만 표시) -->
     <div id="loading-box" class="hidden bg-slate-800/80 border border-slate-700 rounded-2xl p-8 text-center space-y-2">
       <div class="inline-block w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-      <p id="loading-msg" class="text-xs text-slate-300">사이트에서 일자별 목록을 불러오는 중입니다...</p>
+      <p class="text-xs text-slate-300">사이트에서 최신 목록과 이미지를 추출하고 있습니다...</p>
     </div>
 
-    <!-- 게시물 리스트 (일자별 그룹화) -->
-    <div id="items-container" class="space-y-5"></div>
+    <!-- 게시물 리스트 (카드형 이미지 + 일자별 그룹화) -->
+    <div id="items-container" class="space-y-6"></div>
 
   </main>
 
@@ -188,24 +96,24 @@
     </div>
   </nav>
 
-  <!-- 상세 보기 & 첨부파일 다운로드 모달 -->
-  <div id="detail-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-end sm:items-center justify-center sm:p-4">
-    <div class="bg-slate-800 border border-slate-700 rounded-t-3xl sm:rounded-2xl w-full max-w-md max-h-[88vh] overflow-y-auto p-5 space-y-4 shadow-2xl">
+  <!-- 상세 보기 & 이미지 갤러리 & 첨부파일 다운로드 모달 -->
+  <div id="detail-modal" class="fixed inset-0 bg-black/85 z-50 hidden flex items-end sm:items-center justify-center sm:p-4">
+    <div class="bg-slate-800 border border-slate-700 rounded-t-3xl sm:rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-4 shadow-2xl">
       <div class="flex justify-between items-start border-b border-slate-700 pb-3">
         <div class="pr-2">
           <span id="modal-date" class="text-[11px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-bold">날짜</span>
-          <h3 id="modal-title" class="font-extrabold text-base text-white mt-1.5 break-all">제목</h3>
+          <h3 id="modal-title" class="font-extrabold text-base text-white mt-1.5 break-all leading-snug">제목</h3>
         </div>
         <button onclick="closeDetailModal()" class="text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
       </div>
 
-      <!-- 썸네일/미리보기 영역 -->
-      <div id="modal-images" class="space-y-2 max-h-60 overflow-y-auto rounded-xl"></div>
+      <!-- 프리뷰 이미지 영역 -->
+      <div id="modal-images" class="space-y-2.5 max-h-80 overflow-y-auto rounded-xl bg-slate-900 p-2"></div>
 
       <!-- 첨부파일 및 마그넷 다운로드 영역 -->
       <div class="space-y-2">
         <h4 class="text-xs font-extrabold text-slate-300 flex items-center justify-between">
-          <span>📥 추출된 첨부파일 & 다운로드 링크</span>
+          <span>📥 추출된 첨부파일 & 마그넷 링크</span>
           <span id="modal-file-count" class="text-[11px] text-indigo-400">탐색 중...</span>
         </h4>
         <div id="modal-attachments" class="space-y-2"></div>
@@ -218,11 +126,11 @@
     </div>
   </div>
 
-  <!-- 프록시 및 타겟 URL 설정 모달 -->
+  <!-- 프록시 및 설정 모달 -->
   <div id="settings-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
     <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
       <div class="flex justify-between items-center border-b border-slate-700 pb-2">
-        <h3 class="font-extrabold text-base text-white">⚙️ 연결 및 프록시 설정</h3>
+        <h3 class="font-extrabold text-base text-white">⚙️ 연결 및 이미지 프록시 설정</h3>
         <button onclick="closeSettings()" class="text-slate-400 text-lg">✕</button>
       </div>
       <div class="space-y-3 text-xs">
@@ -231,69 +139,166 @@
           <input type="text" id="input-base-url" value="https://projectjav.com" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none">
         </div>
         <div>
-          <label class="block font-bold text-slate-300 mb-1">우회 프록시 서버 선택 (안 열릴 때 변경)</label>
+          <label class="block font-bold text-slate-300 mb-1">웹 크롤링 프록시 선택</label>
           <select id="input-proxy-mode" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none">
-            <option value="auto">자동 순차 재시도 (추천)</option>
-            <option value="allorigins">AllOrigins Proxy</option>
-            <option value="corsproxy">CorsProxy.io</option>
+            <option value="auto">자동 최단시간 응답 프록시 (추천)</option>
+            <option value="corsproxy">CorsProxy.io (빠름)</option>
             <option value="codetabs">CodeTabs Proxy</option>
+            <option value="allorigins">AllOrigins Proxy</option>
           </select>
         </div>
-        <p class="text-[11px] text-slate-400 leading-relaxed">
-          * 사이트에 Cloudflare 봇 차단이 강하게 걸려 있을 경우, 우측 하단 [원본 사이트]에서 쿠키 인증을 거치거나 전용 워커를 연결할 수 있습니다.
-        </p>
+        <label class="flex items-center space-x-2 pt-1 cursor-pointer">
+          <input type="checkbox" id="input-img-proxy" checked class="rounded text-indigo-600 w-4 h-4">
+          <span class="text-slate-300 font-bold">이미지 차단 우회 프록시(wsrv.nl) 강제 적용</span>
+        </label>
       </div>
-      <button onclick="saveSettings()" class="w-full bg-indigo-600 text-white py-2.5 rounded-xl font-bold text-xs">저장 후 새로고침</button>
+      <div class="flex space-x-2">
+        <button onclick="clearCacheAndReload()" class="flex-1 bg-rose-900/60 text-rose-200 py-2.5 rounded-xl font-bold text-xs">캐시 초기화</button>
+        <button onclick="saveSettings()" class="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl font-bold text-xs">설정 저장</button>
+      </div>
     </div>
   </div>
 
   <script>
     let baseUrl = localStorage.getItem('pjav_base_url') || 'https://projectjav.com';
     let proxyMode = localStorage.getItem('pjav_proxy_mode') || 'auto';
+    let useImgProxy = localStorage.getItem('pjav_img_proxy') !== 'false';
     let currentPage = 1;
-    let currentView = 'list'; // 'list' | 'saved'
+    let currentView = 'list';
     let currentDateFilter = 'ALL';
     let allItems = [];
     let savedItems = JSON.parse(localStorage.getItem('pjav_saved_items') || '[]');
+    let detailCache = JSON.parse(localStorage.getItem('pjav_detail_cache') || '{}');
 
     document.getElementById('input-base-url').value = baseUrl;
     document.getElementById('input-proxy-mode').value = proxyMode;
+    document.getElementById('input-img-proxy').checked = useImgProxy;
 
-    // 다중 CORS 프록시 호출 함수 (실패 시 자동으로 다음 프록시로 우회)
+    // 상대 경로를 절대 경로로 변환
+    function resolveUrl(raw) {
+      if (!raw) return '';
+      let u = raw.trim();
+      if (u.startsWith('data:') || u.startsWith('magnet:')) return u;
+      if (u.startsWith('//')) return 'https:' + u;
+      if (u.startsWith('/')) return baseUrl.replace(/\/$/, '') + u;
+      if (!u.startsWith('http')) return baseUrl.replace(/\/$/, '') + '/' + u;
+      return u;
+    }
+
+    // 이미지 핫링크(403 Forbidden) 우회 URL 생성기
+    function getSafeImageUrl(rawUrl) {
+      const full = resolveUrl(rawUrl);
+      if (!full || full.startsWith('data:')) return '';
+      if (useImgProxy) {
+        return `https://wsrv.nl/?url=${encodeURIComponent(full)}&w=600&output=webp`;
+      }
+      return full;
+    }
+
+    // 이미지 로드 에러 시 프록시 우회 재시도 핸들러
+    window.handleImgError = function(imgEl, originalUrl) {
+      if (!imgEl.dataset.retried && originalUrl) {
+        imgEl.dataset.retried = 'true';
+        imgEl.src = `https://wsrv.nl/?url=${encodeURIComponent(originalUrl)}`;
+      } else {
+        imgEl.style.display = 'none';
+      }
+    };
+
+    // DOM 요소 안의 숨겨진 Lazy-load 이미지까지 모두 찾아내는 함수
+    function extractBestImageFromNode(node) {
+      if (!node) return '';
+      const imgs = Array.from(node.querySelectorAll('img'));
+      for (const img of imgs) {
+        const candidates = [
+          img.getAttribute('data-src'),
+          img.getAttribute('data-original'),
+          img.getAttribute('data-lazy-src'),
+          img.getAttribute('data-lazyload'),
+          img.getAttribute('data-cfsrc'),
+          img.getAttribute('srcset')?.split(',')[0]?.trim()?.split(' ')[0],
+          img.getAttribute('src')
+        ];
+        for (const c of candidates) {
+          if (c && !c.startsWith('data:image/svg') && !c.includes('blank.gif') && !c.includes('placeholder') && !c.includes('logo')) {
+            return resolveUrl(c);
+          }
+        }
+      }
+      // CSS background-image에 들어있는 경우 탐색
+      const styled = node.querySelector('[style*="background-image"]') || (node.getAttribute?.('style')?.includes('background-image') ? node : null);
+      if (styled) {
+        const styleStr = styled.getAttribute('style') || '';
+        const match = styleStr.match(/url\(['"]?([^'")]+)['"]?\)/i);
+        if (match && match[1]) return resolveUrl(match[1]);
+      }
+      return '';
+    }
+
+    // 초고속 병렬 프록시 호출 (가장 먼저 응답하는 프록시 채택)
     async function fetchHtmlWithFallback(targetUrl) {
       const encoded = encodeURIComponent(targetUrl);
       const proxies = [
-        { name: 'allorigins', url: `https://api.allorigins.win/raw?url=${encoded}` },
+        { name: 'corsproxy', url: `https://corsproxy.io/?${encoded}` },
         { name: 'codetabs', url: `https://api.codetabs.com/v1/proxy?quest=${encoded}` },
-        { name: 'corsproxy', url: `https://corsproxy.io/?${encoded}` }
+        { name: 'allorigins', url: `https://api.allorigins.win/raw?url=${encoded}` }
       ];
 
-      const listToTry = proxyMode === 'auto'
-        ? proxies
-        : proxies.filter(p => p.name === proxyMode).concat(proxies);
+      if (proxyMode !== 'auto') {
+        const chosen = proxies.find(p => p.name === proxyMode) || proxies[0];
+        const res = await fetch(chosen.url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.text();
+      }
 
-      let lastErr = null;
-      for (const p of listToTry) {
+      // auto 모드: 3개 프록시에 동시 요청을 보내 가장 먼저 도착한 정상 HTML 사용 (속도 3배 향상)
+      const fetchOne = async (p) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 9000);
         try {
-          document.getElementById('status-text').textContent = `프록시(${p.name}) 경유 접속 중...`;
-          const res = await fetch(p.url, { cache: 'no-store' });
+          const res = await fetch(p.url, { signal: controller.signal });
+          clearTimeout(timer);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const text = await res.text();
-          if (text && text.length > 200 && !text.includes('Just a moment...')) {
-            document.getElementById('status-text').textContent = `연결 성공 (${p.name}) · ${new Date().toLocaleTimeString()}`;
-            return text;
+          if (!text || text.length < 200 || text.includes('Just a moment...')) {
+            throw new Error('Blocked');
           }
-        } catch (e) {
-          lastErr = e;
+          return { text, proxyName: p.name };
+        } catch (err) {
+          clearTimeout(timer);
+          throw err;
         }
+      };
+
+      try {
+        const fastest = await Promise.any(proxies.map(fetchOne));
+        document.getElementById('status-text').textContent = `⚡ 실시간 갱신 완료 (${fastest.proxyName} · ${new Date().toLocaleTimeString()})`;
+        return fastest.text;
+      } catch (e) {
+        throw new Error('프록시 응답 지연 또는 차단됨');
       }
-      throw lastErr || new Error('모든 프록시 연결 실패 또는 Cloudflare 차단');
     }
 
-    // 사이트 목록 페이지 파싱
-    async function fetchBoardData() {
+    // 사이트 목록 크롤링 (로컬 캐시 즉시 표시 + 백그라운드 업데이트)
+    async function fetchBoardData(isManual = false) {
       const loadingBox = document.getElementById('loading-box');
-      loadingBox.classList.remove('hidden');
+      const refreshIcon = document.getElementById('refresh-icon');
+      const cacheKey = `pjav_cache_v2_page_${currentPage}`;
+      const cachedRaw = localStorage.getItem(cacheKey);
+
+      // 1. 캐시가 있으면 앱 켜자마자 0.1초 만에 즉시 화면에 렌더링
+      if (cachedRaw && !isManual) {
+        try {
+          allItems = JSON.parse(cachedRaw);
+          renderDateTabs();
+          renderItems();
+          document.getElementById('status-text').textContent = `⚡ 저장된 목록 표시 중 (백그라운드 동기화 중...)`;
+        } catch (e) {}
+      } else {
+        loadingBox.classList.remove('hidden');
+      }
+
+      refreshIcon.classList.add('animate-spin');
 
       try {
         const pageUrl = currentPage === 1 ? baseUrl : `${baseUrl}/?page=${currentPage}`;
@@ -303,56 +308,54 @@
 
         const parsedItems = [];
         const seenLinks = new Set();
-
-        // 날짜 정규식 (YYYY-MM-DD, YYYY.MM.DD, MM-DD, Today, Yesterday 등 탐지)
         const dateRegex = /(20\d{2}[-./]\d{1,2}[-./]\d{1,2})|(\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+20\d{2}\b)|(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*20\d{2}\b)|(\b\d{2}[-./]\d{2}\b)/i;
 
-        // 테이블 행(tr), 아티클(article), 카드 블록(div) 단위로 게시물과 날짜, 직관적 다운로드 링크 추출
-        const containers = doc.querySelectorAll('tr, article, .post, .item, .card, li, .row');
+        const containers = doc.querySelectorAll('article, .card, .post, .item, .movie-item, .video-item, .col-md-3, .col-sm-6, tr, li');
 
         containers.forEach((el) => {
           const links = Array.from(el.querySelectorAll('a[href]'));
           if (links.length === 0) return;
 
-          // 게시물 상세 링크 찾기 (의미 있는 제목을 가진 첫 링크)
           const mainLink = links.find(a => {
             const href = a.getAttribute('href') || '';
-            const txt = a.textContent.trim();
-            return txt.length >= 4 && !href.startsWith('javascript') && !href.startsWith('#') && !href.startsWith('magnet:');
-          });
+            const txt = (a.textContent || a.getAttribute('title') || '').trim();
+            return txt.length >= 3 && !href.startsWith('javascript') && !href.startsWith('#') && !href.startsWith('magnet:');
+          }) || links[0];
 
-          if (!mainLink) return;
+          const rawHref = mainLink.getAttribute('href') || '';
+          if (!rawHref || rawHref.startsWith('#') || rawHref.startsWith('javascript')) return;
 
-          let fullUrl = mainLink.getAttribute('href');
-          if (fullUrl.startsWith('/')) fullUrl = baseUrl.replace(/\/$/, '') + fullUrl;
-          else if (!fullUrl.startsWith('http')) fullUrl = baseUrl.replace(/\/$/, '') + '/' + fullUrl;
+          const fullUrl = resolveUrl(rawHref);
+          if (seenLinks.has(fullUrl) || fullUrl === baseUrl || fullUrl === baseUrl + '/') return;
 
-          if (seenLinks.has(fullUrl)) return;
+          // 제목 추출 (텍스트가 없으면 이미지 alt나 title 속성 활용)
+          let title = (mainLink.textContent || mainLink.getAttribute('title') || '').trim().replace(/\s+/g, ' ');
+          if (title.length < 3) {
+            const imgAlt = el.querySelector('img')?.getAttribute('alt') || '';
+            title = imgAlt.trim() || fullUrl.split('/').filter(Boolean).pop();
+          }
+          if (!title || title.length < 2) return;
 
-          const title = mainLink.textContent.trim().replace(/\s+/g, ' ');
-          if (title.length < 3) return;
-
-          // 같은 행/블록 내 날짜 추출
+          // 날짜 추출
           const blockText = el.textContent || '';
           const dateMatch = blockText.match(dateRegex);
           const dateStr = dateMatch ? dateMatch[0] : '최근 업데이트';
 
-          // 같은 행/블록 안에 바로 노출된 첨부파일(.torrent 등)이나 마그넷 링크가 있으면 즉시 수집
+          // 이미지 추출 (현재 블록 -> 상위 부모 블록까지 폭넓게 탐색)
+          let thumb = extractBestImageFromNode(el);
+          if (!thumb && el.parentElement) {
+            thumb = extractBestImageFromNode(el.parentElement);
+          }
+
+          // 바로 노출된 첨부파일(.torrent 등) 추출
           const directDownloads = [];
           links.forEach(a => {
             const h = a.getAttribute('href') || '';
             const t = a.textContent.trim() || '첨부파일';
             if (h.startsWith('magnet:') || /\.(torrent|zip|rar|7z|mp4|mkv|srt|ass)(\?|$)/i.test(h) || /download|dl|torrent|magnet/i.test(h)) {
-              let dlUrl = h;
-              if (dlUrl.startsWith('/')) dlUrl = baseUrl.replace(/\/$/, '') + dlUrl;
-              directDownloads.push({ label: t || '다운로드', url: dlUrl });
+              directDownloads.push({ label: t || '다운로드', url: resolveUrl(h) });
             }
           });
-
-          // 썸네일 이미지 추출
-          const imgEl = el.querySelector('img');
-          let thumb = imgEl ? (imgEl.getAttribute('data-src') || imgEl.getAttribute('src') || '') : '';
-          if (thumb && thumb.startsWith('/')) thumb = baseUrl.replace(/\/$/, '') + thumb;
 
           seenLinks.add(fullUrl);
           parsedItems.push({
@@ -360,49 +363,58 @@
             title,
             url: fullUrl,
             date: dateStr,
-            thumb,
+            thumb: thumb || (detailCache[fullUrl]?.images?.[0] || ''),
             directDownloads
           });
         });
 
-        // 만약 위 컨테이너 방식으로 안 잡히면 전체 a 태그에서 추출
-        if (parsedItems.length === 0) {
-          doc.querySelectorAll('a[href]').forEach(a => {
-            const txt = a.textContent.trim();
-            let href = a.getAttribute('href') || '';
-            if (txt.length > 6 && !href.startsWith('#') && !href.startsWith('javascript')) {
-              if (href.startsWith('/')) href = baseUrl.replace(/\/$/, '') + href;
-              if (!seenLinks.has(href)) {
-                seenLinks.add(href);
-                parsedItems.push({
-                  id: btoa(encodeURIComponent(href)).slice(0, 16),
-                  title: txt,
-                  url: href,
-                  date: '최신 목록',
-                  thumb: '',
-                  directDownloads: []
-                });
-              }
-            }
-          });
+        if (parsedItems.length > 0) {
+          allItems = parsedItems;
+          localStorage.setItem(cacheKey, JSON.stringify(allItems));
+          renderDateTabs();
+          renderItems();
+          // 목록에 썸네일이 비어 있는 상위 항목들은 백그라운드에서 이미지 자동 보충
+          prefetchMissingThumbnails();
         }
-
-        allItems = parsedItems;
-        renderDateTabs();
-        renderItems();
       } catch (err) {
-        document.getElementById('items-container').innerHTML = `
-          <div class="bg-rose-950/50 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200 space-y-2">
-            <p class="font-extrabold text-sm">⚠️ 데이터를 직접 가져오지 못했습니다 (${err.message})</p>
-            <p class="text-rose-300 leading-relaxed">대상 사이트가 현재 프록시 IP를 차단했거나 Cloudflare 캡차가 활성화되어 있을 수 있습니다. 상단 [⚙️ 설정]에서 다른 프록시를 선택하거나 하단 [원본 사이트] 버튼으로 직접 이동할 수 있습니다.</p>
-          </div>
-        `;
+        if (allItems.length === 0) {
+          document.getElementById('items-container').innerHTML = `
+            <div class="bg-rose-950/50 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200 space-y-2">
+              <p class="font-extrabold text-sm">⚠️ 사이트 연결 지연 (${err.message})</p>
+              <p class="text-rose-300 leading-relaxed">우측 상단 [🔄 새로고침]을 다시 누르거나 [⚙️ 설정]에서 다른 프록시를 선택해 보세요.</p>
+            </div>
+          `;
+        }
       } finally {
         loadingBox.classList.add('hidden');
+        refreshIcon.classList.remove('animate-spin');
       }
     }
 
-    // 일자별 필터 탭 렌더링
+    // 목록에 이미지가 없는 항목(최대 6개)의 상세 페이지에서 대표 이미지를 자동으로 가져와 채워넣기
+    async function prefetchMissingThumbnails() {
+      const missing = allItems.filter(i => !i.thumb).slice(0, 6);
+      for (const item of missing) {
+        try {
+          if (detailCache[item.url]?.images?.length > 0) {
+            item.thumb = detailCache[item.url].images[0];
+            renderItems();
+            continue;
+          }
+          const html = await fetchHtmlWithFallback(item.url);
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const ogImg = doc.querySelector('meta[property="og:image"]')?.getAttribute('content')
+                     || doc.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
+          const bodyImg = ogImg ? resolveUrl(ogImg) : extractBestImageFromNode(doc.body);
+          if (bodyImg) {
+            item.thumb = bodyImg;
+            localStorage.setItem(`pjav_cache_v2_page_${currentPage}`, JSON.stringify(allItems));
+            renderItems();
+          }
+        } catch (e) {}
+      }
+    }
+
     function renderDateTabs() {
       const dates = ['ALL', ...new Set(allItems.map(i => i.date))];
       const tabBox = document.getElementById('date-tabs');
@@ -419,7 +431,7 @@
       renderItems();
     }
 
-    // 게시물 목록을 일자별로 묶어서 화면에 출력
+    // 게시물 리스트 렌더링 (큼직한 썸네일 이미지 노출)
     function renderItems() {
       const container = document.getElementById('items-container');
       const query = (document.getElementById('search-input').value || '').trim().toLowerCase();
@@ -436,7 +448,6 @@
         return;
       }
 
-      // 일자별 그룹화
       const grouped = {};
       filtered.forEach(item => {
         const key = item.date || '기타 일자';
@@ -445,32 +456,39 @@
       });
 
       container.innerHTML = Object.entries(grouped).map(([dateKey, items]) => `
-        <div class="space-y-2.5">
+        <div class="space-y-3">
           <div class="flex items-center justify-between px-1">
-            <h2 class="text-xs font-extrabold text-indigo-400 flex items-center space-x-1.5">
-              <span>📅 ${dateKey}</span>
-            </h2>
+            <h2 class="text-xs font-extrabold text-indigo-400">📅 ${dateKey}</h2>
             <span class="text-[11px] text-slate-500 font-bold">${items.length}건</span>
           </div>
-          <div class="space-y-2">
-            ${items.map(item => `
-              <div onclick='openItemDetail(${JSON.stringify(item).replace(/'/g, "&#39;")})' class="bg-slate-800 hover:bg-slate-750 border border-slate-700/80 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer active:scale-[0.99] transition shadow-sm">
-                <div class="flex items-center space-x-3 pr-2 overflow-hidden">
-                  ${item.thumb ? `<img src="${item.thumb}" class="w-12 h-12 rounded-xl object-cover bg-slate-900 shrink-0" onerror="this.style.display='none'">` : ''}
-                  <div class="overflow-hidden">
-                    <h3 class="font-bold text-sm text-slate-100 truncate">${item.title}</h3>
-                    <div class="flex items-center space-x-2 mt-1">
-                      <span class="text-[11px] text-slate-400">${item.date}</span>
-                      ${item.directDownloads && item.directDownloads.length > 0
-                        ? `<span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">첨부 ${item.directDownloads.length}개</span>`
-                        : `<span class="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded">터치하여 파일 추출</span>`
-                      }
+          <div class="space-y-3">
+            ${items.map(item => {
+              const safeThumb = item.thumb ? getSafeImageUrl(item.thumb) : '';
+              const origThumb = item.thumb || '';
+              return `
+                <div onclick='openItemDetail(${JSON.stringify(item).replace(/'/g, "&#39;")})' class="bg-slate-800 hover:bg-slate-750 border border-slate-700/80 rounded-2xl overflow-hidden cursor-pointer active:scale-[0.99] transition shadow-md">
+                  ${safeThumb ? `
+                    <div class="w-full h-44 bg-slate-950 relative overflow-hidden flex items-center justify-center">
+                      <img src="${safeThumb}" referrerpolicy="no-referrer" loading="lazy" onerror="handleImgError(this, '${origThumb.replace(/'/g, "\\'")}')" class="w-full h-full object-cover">
+                      <span class="absolute top-2 left-2 bg-black/70 backdrop-blur text-[10px] text-indigo-300 font-bold px-2 py-0.5 rounded-md">${item.date}</span>
                     </div>
+                  ` : ''}
+                  <div class="p-3.5 flex items-center justify-between space-x-2">
+                    <div class="overflow-hidden">
+                      <h3 class="font-bold text-sm text-slate-100 leading-snug line-clamp-2">${item.title}</h3>
+                      <div class="flex items-center space-x-2 mt-1.5">
+                        ${!safeThumb ? `<span class="text-[11px] text-slate-400">${item.date}</span>` : ''}
+                        ${item.directDownloads && item.directDownloads.length > 0
+                          ? `<span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold">📥 첨부 ${item.directDownloads.length}개</span>`
+                          : `<span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-bold">터치하여 이미지·첨부 추출</span>`
+                        }
+                      </div>
+                    </div>
+                    <span class="text-slate-400 text-lg shrink-0">📥</span>
                   </div>
                 </div>
-                <span class="text-slate-400 text-sm shrink-0">📥</span>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         </div>
       `).join('');
@@ -478,7 +496,7 @@
       updateSavedBadge();
     }
 
-    // 개별 게시물 클릭 시 상세 페이지 크롤링 후 첨부파일(.torrent, .zip, magnet 등) 추출
+    // 상세 페이지 열기 (본문 내 모든 이미지 + 첨부파일 추출 및 캐싱)
     async function openItemDetail(item) {
       const modal = document.getElementById('detail-modal');
       const attBox = document.getElementById('modal-attachments');
@@ -494,35 +512,69 @@
       saveBtn.textContent = isSaved ? '🗑️ 보관함에서 제거' : '⭐ 보관함에 저장';
       saveBtn.onclick = () => toggleSaveItem(item);
 
-      imgBox.innerHTML = item.thumb ? `<img src="${item.thumb}" class="w-full rounded-xl object-contain max-h-52 mx-auto">` : '';
-      attBox.innerHTML = `<div class="p-4 bg-slate-900 rounded-xl text-xs text-slate-400 text-center animate-pulse">상세 페이지에서 첨부파일 링크를 추출하고 있습니다...</div>`;
-      countLabel.textContent = '추출 중...';
       modal.classList.remove('hidden');
+
+      // 이미 한 번 열어본 게시물이면 캐시에서 0.1초 만에 즉시 표시
+      if (detailCache[item.url]) {
+        renderDetailModalContent(detailCache[item.url].images, detailCache[item.url].files);
+        return;
+      }
+
+      imgBox.innerHTML = item.thumb
+        ? `<img src="${getSafeImageUrl(item.thumb)}" referrerpolicy="no-referrer" class="w-full rounded-xl object-contain max-h-64 mx-auto">`
+        : `<div class="p-4 text-center text-xs text-slate-400 animate-pulse">본문 이미지를 불러오는 중...</div>`;
+      attBox.innerHTML = `<div class="p-4 bg-slate-900 rounded-xl text-xs text-slate-400 text-center animate-pulse">상세 페이지에서 첨부파일을 추출하고 있습니다...</div>`;
+      countLabel.textContent = '탐색 중...';
 
       try {
         const detailHtml = await fetchHtmlWithFallback(item.url);
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(detailHtml, 'text/html');
+        const doc = new DOMParser().parseFromString(detailHtml, 'text/html');
 
+        // 1. 본문 내 모든 고화질/프리뷰 이미지 추출
+        const images = [];
+        const seenImgs = new Set();
+        const addImg = (u) => {
+          const full = resolveUrl(u);
+          if (full && !seenImgs.has(full) && !full.includes('logo') && !full.includes('icon') && !full.includes('avatar') && !full.endsWith('.svg')) {
+            seenImgs.add(full);
+            images.push(full);
+          }
+        };
+
+        if (item.thumb) addImg(item.thumb);
+        const ogImage = doc.querySelector('meta[property="og:image"]')?.getAttribute('content');
+        if (ogImage) addImg(ogImage);
+
+        doc.querySelectorAll('img').forEach(img => {
+          const src = img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('data-lazy-src') || img.getAttribute('src');
+          if (src) addImg(src);
+        });
+
+        // 추출한 첫 번째 이미지를 목록 썸네일에도 반영
+        if (images.length > 0 && !item.thumb) {
+          item.thumb = images[0];
+          const target = allItems.find(i => i.url === item.url);
+          if (target) target.thumb = images[0];
+          localStorage.setItem(`pjav_cache_v2_page_${currentPage}`, JSON.stringify(allItems));
+          renderItems();
+        }
+
+        // 2. 첨부파일 및 마그넷 링크 추출
         const files = [...(item.directDownloads || [])];
         const seenUrls = new Set(files.map(f => f.url));
 
-        // 상세 페이지 내 모든 다운로드/첨부/마그넷 링크 탐색
         doc.querySelectorAll('a[href]').forEach(a => {
           const rawHref = a.getAttribute('href') || '';
           const text = a.textContent.trim().replace(/\s+/g, ' ');
           const isAttachment =
             rawHref.startsWith('magnet:') ||
-            /\.(torrent|zip|rar|7z|mp4|mkv|avi|srt|ass|smi|pdf)(\?|$)/i.test(rawHref) ||
+            /\.(torrent|zip|rar|7z|mp4|mkv|avi|srt|ass|smi)(\?|$)/i.test(rawHref) ||
             /\.(torrent|zip|rar|7z|mp4|mkv|srt|ass)/i.test(text) ||
             /download|attachment|torrent|magnet|파일|다운/i.test(rawHref + ' ' + text + ' ' + (a.className || ''));
 
-          if (isAttachment) {
-            let full = rawHref;
-            if (full.startsWith('/')) full = baseUrl.replace(/\/$/, '') + full;
-            else if (!full.startsWith('http') && !full.startsWith('magnet:')) full = baseUrl.replace(/\/$/, '') + '/' + full;
-
-            if (!seenUrls.has(full)) {
+          if (isAttachment && !rawHref.startsWith('#') && !rawHref.startsWith('javascript')) {
+            const full = resolveUrl(rawHref);
+            if (!seenUrls.has(full) && full !== item.url) {
               seenUrls.add(full);
               files.push({
                 label: text || (full.startsWith('magnet:') ? '마그넷(Magnet) 링크' : full.split('/').pop()),
@@ -532,7 +584,6 @@
           }
         });
 
-        // 본문 텍스트 내 숨겨진 마그넷 주소(magnet:?xt=...) 정규식 추출
         const rawMagnets = detailHtml.match(/magnet:\?xt=urn:btih:[a-zA-Z0-9%&=\-._]+/g) || [];
         rawMagnets.forEach((m, idx) => {
           if (!seenUrls.has(m)) {
@@ -541,56 +592,68 @@
           }
         });
 
-        countLabel.textContent = `총 ${files.length}개 발견`;
+        // 상세 결과 캐시 저장
+        detailCache[item.url] = { images: images.slice(0, 10), files };
+        localStorage.setItem('pjav_detail_cache', JSON.stringify(detailCache));
 
-        if (files.length === 0) {
-          attBox.innerHTML = `
-            <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 text-xs text-slate-400 space-y-2">
-              <p>자동 감지된 직접 첨부파일이 없습니다. 아래 [원본 웹페이지 열기]를 눌러 확인해 보세요.</p>
-            </div>
-          `;
-        } else {
-          attBox.innerHTML = files.map((f, i) => {
-            const isMagnet = f.url.startsWith('magnet:');
-            return `
-              <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-center justify-between space-x-2">
-                <div class="overflow-hidden">
-                  <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${isMagnet ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">
-                    ${isMagnet ? '🧲 MAGNET' : '📄 FILE'}
-                  </span>
-                  <p class="text-xs font-bold text-white truncate mt-1">${f.label}</p>
-                </div>
-                <div class="flex space-x-1.5 shrink-0">
-                  <button onclick="copyLink('${f.url.replace(/'/g, "\\'")}')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-2 rounded-lg text-xs font-bold">복사</button>
-                  <a href="${f.url}" download target="_blank" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-lg text-xs font-extrabold">다운로드</a>
-                </div>
-              </div>
-            `;
-          }).join('');
-        }
+        renderDetailModalContent(images.slice(0, 10), files);
       } catch (e) {
         countLabel.textContent = '오류';
         attBox.innerHTML = `<div class="p-3 bg-rose-950/60 text-rose-200 rounded-xl text-xs">상세 페이지 로드 실패: ${e.message}</div>`;
       }
     }
 
-    function closeDetailModal() {
-      document.getElementById('detail-modal').classList.add('hidden');
+    function renderDetailModalContent(images, files) {
+      const imgBox = document.getElementById('modal-images');
+      const attBox = document.getElementById('modal-attachments');
+      const countLabel = document.getElementById('modal-file-count');
+
+      if (images && images.length > 0) {
+        imgBox.innerHTML = images.map(imgUrl => `
+          <img src="${getSafeImageUrl(imgUrl)}" referrerpolicy="no-referrer" onerror="handleImgError(this, '${imgUrl.replace(/'/g, "\\'")}')" class="w-full rounded-xl object-contain max-h-72 mx-auto bg-slate-950">
+        `).join('');
+      } else {
+        imgBox.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">표시할 본문 이미지가 없습니다.</p>`;
+      }
+
+      countLabel.textContent = `총 ${files.length}개 발견`;
+      if (files.length === 0) {
+        attBox.innerHTML = `
+          <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 text-xs text-slate-400">
+            자동 감지된 첨부파일이 없습니다. 아래 [원본 웹페이지 열기]로 직접 확인해 보세요.
+          </div>
+        `;
+      } else {
+        attBox.innerHTML = files.map(f => {
+          const isMagnet = f.url.startsWith('magnet:');
+          return `
+            <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-center justify-between space-x-2">
+              <div class="overflow-hidden">
+                <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${isMagnet ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">
+                  ${isMagnet ? '🧲 MAGNET' : '📄 FILE'}
+                </span>
+                <p class="text-xs font-bold text-white truncate mt-1">${f.label}</p>
+              </div>
+              <div class="flex space-x-1.5 shrink-0">
+                <button onclick="copyLink('${f.url.replace(/'/g, "\\'")}')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-2 rounded-lg text-xs font-bold">복사</button>
+                <a href="${f.url}" download target="_blank" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-lg text-xs font-extrabold">다운로드</a>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
     }
 
+    function closeDetailModal() { document.getElementById('detail-modal').classList.add('hidden'); }
+
     function copyLink(url) {
-      navigator.clipboard.writeText(url).then(() => {
-        alert('다운로드/마그넷 주소가 클립보드에 복사되었습니다!');
-      });
+      navigator.clipboard.writeText(url).then(() => alert('링크가 클립보드에 복사되었습니다!'));
     }
 
     function toggleSaveItem(item) {
       const idx = savedItems.findIndex(s => s.url === item.url);
-      if (idx >= 0) {
-        savedItems.splice(idx, 1);
-      } else {
-        savedItems.unshift(item);
-      }
+      if (idx >= 0) savedItems.splice(idx, 1);
+      else savedItems.unshift(item);
       localStorage.setItem('pjav_saved_items', JSON.stringify(savedItems));
       updateSavedBadge();
       closeDetailModal();
@@ -617,26 +680,33 @@
     function changePage(delta) {
       currentPage = Math.max(1, currentPage + delta);
       document.getElementById('page-indicator').textContent = `${currentPage}P`;
-      fetchBoardData();
+      fetchBoardData(false);
     }
 
-    function openDirectUrl() {
-      window.open(baseUrl, '_blank');
-    }
-
+    function openDirectUrl() { window.open(baseUrl, '_blank'); }
     function openSettings() { document.getElementById('settings-modal').classList.remove('hidden'); }
     function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); }
+
     function saveSettings() {
       baseUrl = document.getElementById('input-base-url').value.trim().replace(/\/$/, '');
       proxyMode = document.getElementById('input-proxy-mode').value;
+      useImgProxy = document.getElementById('input-img-proxy').checked;
       localStorage.setItem('pjav_base_url', baseUrl);
       localStorage.setItem('pjav_proxy_mode', proxyMode);
+      localStorage.setItem('pjav_img_proxy', String(useImgProxy));
       closeSettings();
-      fetchBoardData();
+      fetchBoardData(true);
     }
 
-    // 앱 시작 시 첫 페이지 로드
-    fetchBoardData();
+    function clearCacheAndReload() {
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('pjav_cache_') || k === 'pjav_detail_cache') localStorage.removeItem(k);
+      });
+      location.reload();
+    }
+
+    // 앱 시작 시 즉시 실행
+    fetchBoardData(false);
   </script>
 </body>
 </html>
