@@ -106,12 +106,12 @@
     </div>
   </nav>
 
-  <!-- 배우 프로필 대표 이미지 모달 -->
+  <!-- 배우 프로필 대표 이미지 모달 (AVDBS 연동) -->
   <div id="actress-modal" onclick="if(event.target===this) closeActressModal()" class="fixed inset-0 bg-black/85 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl space-y-4 p-5">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl space-y-3.5 p-5">
       <div class="flex items-center justify-between border-b border-slate-800 pb-3">
         <div>
-          <span class="text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded font-bold">👩 ACTRESS PROFILE</span>
+          <span class="text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded font-bold">👩 AVDBS 배우 프로필</span>
           <h3 id="actress-modal-name" class="font-extrabold text-lg text-white mt-1">배우 이름</h3>
         </div>
         <button onclick="closeActressModal()" class="text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
@@ -122,8 +122,8 @@
         <button id="actress-filter-btn" class="bg-rose-600 hover:bg-rose-500 text-white py-2.5 rounded-xl font-extrabold text-xs shadow active:scale-95 transition">
           🎬 이 배우 작품만 보기
         </button>
-        <a id="actress-google-btn" href="#" target="_blank" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 py-2.5 rounded-xl font-bold text-xs text-center flex items-center justify-center">
-          🔍 구글 화보 검색 ↗
+        <a id="actress-avdbs-btn" href="#" target="_blank" class="bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 rounded-xl font-bold text-xs text-center flex items-center justify-center shadow">
+          🔎 AVDBS 프로필 열기 ↗
         </a>
       </div>
     </div>
@@ -135,12 +135,6 @@
   </div>
 
   <script>
-    // 전역 에러 발생 시 멈추지 않고 화면에 즉시 원인 표시
-    window.onerror = function(msg, url, line) {
-      const st = document.getElementById('status-text');
-      if (st) st.textContent = '⚠️ 스크립트 오류 발생 (라인 ' + line + ')';
-    };
-
     const safeStore = {
       get: (k, def) => { try { return JSON.parse(localStorage.getItem(k)) || def; } catch(e) { return def; } },
       set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} }
@@ -148,16 +142,25 @@
 
     let allItems = [];
     let savedItems = safeStore.get('pjav_saved_v2', []);
-    let actressImgCache = safeStore.get('pjav_actress_img_cache', {});
+    // 기존에 잘못 캐시된 actor.php 웹페이지 주소를 무시하도록 새 캐시 키(v3) 사용
+    let actressImgCache = safeStore.get('pjav_actress_img_v3', {});
     let currentView = 'list';
 
+    // URL이 웹페이지(.php 등)가 아닌 실제 이미지 URL인지 검증
+    function isValidImageUrl(url) {
+      if (!url || typeof url !== 'string') return false;
+      const low = url.toLowerCase();
+      if (low.includes('actor.php') || low.includes('actor_list.php') || low.includes('search.php')) return false;
+      return true;
+    }
+
     function getSafeImageUrl(url) {
-      if (!url) return '';
+      if (!isValidImageUrl(url)) return '';
       return 'https://wsrv.nl/?url=' + encodeURIComponent(url) + '&w=800&output=webp';
     }
 
     window.handleImgError = function(imgEl, origUrl) {
-      if (!imgEl.dataset.fallback && origUrl) {
+      if (!imgEl.dataset.fallback && isValidImageUrl(origUrl)) {
         imgEl.dataset.fallback = '1';
         imgEl.src = origUrl;
       } else if (imgEl.parentElement) {
@@ -231,7 +234,85 @@
       renderItems();
     }
 
-    // 데이터 불러오기 (현재 경로 + GitHub Raw 경로 다중 시도)
+    // 프록시를 통해 AVDBS 웹페이지 HTML을 가져오는 헬퍼
+    async function fetchHtmlViaProxy(targetUrl) {
+      const encoded = encodeURIComponent(targetUrl);
+      const proxies = [
+        'https://api.allorigins.win/raw?url=' + encoded,
+        'https://api.codetabs.com/v1/proxy?quest=' + encoded,
+        'https://corsproxy.io/?' + encoded
+      ];
+      for (const p of proxies) {
+        try {
+          const r = await fetch(p);
+          if (r.ok) {
+            const txt = await r.text();
+            if (txt && txt.length > 200) return txt;
+          }
+        } catch (e) {}
+      }
+      return '';
+    }
+
+    // AVDBS HTML 문서 안에서 진짜 배우 사진(.jpg/.png) URL만 뽑아내는 파서
+    function parseRealActorImgFromAvdbsHtml(html) {
+      if (!html) return '';
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+
+      const og = doc.querySelector('meta[property="og:image"]');
+      if (og && og.getAttribute('content')) {
+        const c = og.getAttribute('content').trim();
+        if (/\.(jpg|jpeg|png|webp)/i.test(c) && !/logo|banner/i.test(c)) {
+          return c.startsWith('http') ? c : 'https://www.avdbs.com' + (c.startsWith('/') ? '' : '/') + c;
+        }
+      }
+
+      const imgs = Array.from(doc.querySelectorAll('img'));
+      for (const img of imgs) {
+        const src = (img.getAttribute('data-src') || img.getAttribute('src') || '').trim();
+        if (!src) continue;
+        if (/logo|icon|banner|btn|blank|flag|svg/i.test(src)) continue;
+        if (/\.(jpg|jpeg|png|webp)/i.test(src)) {
+          return src.startsWith('http') ? src : 'https://www.avdbs.com' + (src.startsWith('/') ? '' : '/') + src;
+        }
+      }
+      return '';
+    }
+
+    // AVDBS에서 배우 이름으로 검색 -> actor.php?actor_idx=... 페이지 탐색 -> 실제 .jpg 추출
+    async function searchAvdbsActorPhoto(actressName) {
+      const searchUrls = [
+        'https://www.avdbs.com/menu/search.php?kwd=' + encodeURIComponent(actressName),
+        'https://www.avdbs.com/menu/actor_list.php?kwd=' + encodeURIComponent(actressName)
+      ];
+
+      for (const sUrl of searchUrls) {
+        const html = await fetchHtmlViaProxy(sUrl);
+        if (!html) continue;
+
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        // 검색 결과 내 배우 고유 링크(actor.php?actor_idx=...) 찾기
+        const actorLink = Array.from(doc.querySelectorAll('a[href*="actor.php?actor_idx="]'))[0];
+        if (actorLink) {
+          const href = actorLink.getAttribute('href');
+          const fullActorPageUrl = href.startsWith('http') ? href : 'https://www.avdbs.com' + (href.startsWith('/') ? '' : '/menu/') + href.replace(/^\/?menu\//, '');
+
+          // 검색 결과 카드 안에 이미 썸네일 이미지(.jpg)가 있으면 바로 추출
+          const cardImg = parseRealActorImgFromAvdbsHtml(actorLink.parentElement ? actorLink.parentElement.outerHTML : '');
+          if (cardImg) return { imgUrl: cardImg, pageUrl: fullActorPageUrl };
+
+          // 상세 배우 페이지(actor.php?actor_idx=번호)로 접속해서 증명사진 추출
+          const detailHtml = await fetchHtmlViaProxy(fullActorPageUrl);
+          const detailImg = parseRealActorImgFromAvdbsHtml(detailHtml);
+          if (detailImg) return { imgUrl: detailImg, pageUrl: fullActorPageUrl };
+        }
+
+        const directImg = parseRealActorImgFromAvdbsHtml(html);
+        if (directImg) return { imgUrl: directImg, pageUrl: sUrl };
+      }
+      return { imgUrl: '', pageUrl: 'https://www.avdbs.com/menu/search.php?kwd=' + encodeURIComponent(actressName) };
+    }
+
     async function loadDataJson() {
       const statusEl = document.getElementById('status-text');
       const container = document.getElementById('items-container');
@@ -262,40 +343,34 @@
 
       if (!loadedData || !Array.isArray(loadedData.items)) {
         statusEl.textContent = '⚠️ data.json 파일 없음 (' + lastError + ')';
-        container.innerHTML = `
-          <div class="bg-rose-950/60 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200 space-y-2.5 leading-relaxed">
-            <p class="font-extrabold text-sm text-rose-300">⚠️ 아직 저장소에 data.json 파일이 없거나 비어 있습니다!</p>
-            <p>1. GitHub 저장소 상단 <strong>[Actions]</strong> 탭을 눌러 최근 실행된 작업이 <strong>초록색 체크(✅)</strong>로 끝났는지 확인해 주세요.</p>
-            <p>2. 만약 빨간색 <strong>X(실패)</strong>가 떠 있다면, <strong>.github/workflows/update.yml</strong> 파일 맨 아래 <code>git push</code> 윗줄에 <code>git pull --rebase origin main</code>을 넣고 다시 실행해 주세요.</p>
-          </div>
-        `;
+        container.innerHTML = '<div class="bg-rose-950/60 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200">GitHub [Actions] 탭에서 데이터 수집이 완료된 후 [🔄 목록 갱신]을 눌러주세요.</div>';
         return;
       }
 
-      // 구버전(files 배열)과 신버전(torrents 배열) 데이터 모두 호환 변환
       allItems = loadedData.items.filter(i => i && i.title && i.title.toLowerCase() !== 'download').map(item => {
-        let torrents = Array.isArray(item.torrents) ? item.torrents : [];
-        if (torrents.length === 0 && Array.isArray(item.files) && item.files.length > 0) {
-          item.files.forEach(f => {
-            if (f.url && f.url.startsWith('magnet:')) {
-              torrents.push({ size: f.label || '마그넷', seeds: '', leeches: '', date: '', downloadUrl: '', magnetUrl: f.url });
-            } else if (f.url) {
-              torrents.push({ size: f.label || '토렌트', seeds: '', leeches: '', date: '', downloadUrl: f.url, magnetUrl: '' });
-            }
+        // 만약 data.json의 actressImages에 미리 수집된 실제 이미지가 있으면 캐시에 등록
+        if (item.actressImages && typeof item.actressImages === 'object') {
+          Object.entries(item.actressImages).forEach(([k, v]) => {
+            if (isValidImageUrl(v)) actressImgCache[k] = { imgUrl: v, pageUrl: 'https://www.avdbs.com/menu/search.php?kwd=' + encodeURIComponent(k) };
           });
         }
+
+        // 혹시 thumb에 actor.php?actor_idx=12892 같은 잘못된 링크가 들어있으면 비워서 엑스박스 방지
+        const cleanThumb = isValidImageUrl(item.thumb) ? item.thumb : '';
+
         return {
           title: item.title || '제목 없음',
           url: item.url || '#',
           date: item.date || '',
           displayDate: item.displayDate || item.date || '',
-          thumb: item.thumb || '',
+          thumb: cleanThumb,
           actress: Array.isArray(item.actress) ? item.actress : [],
           tags: Array.isArray(item.tags) ? item.tags : [],
-          torrents: torrents
+          torrents: Array.isArray(item.torrents) ? item.torrents : []
         };
       });
 
+      safeStore.set('pjav_actress_img_v3', actressImgCache);
       statusEl.textContent = '⚡ 최근 수집: ' + (loadedData.updatedAt || '완료') + ' (' + allItems.length + '작품)';
       statusEl.className = 'text-[11px] text-emerald-400 font-bold';
       renderItems();
@@ -307,13 +382,14 @@
       const imgBox = document.getElementById('actress-img-box');
       const descEl = document.getElementById('actress-desc');
       const filterBtn = document.getElementById('actress-filter-btn');
-      const googleBtn = document.getElementById('actress-google-btn');
+      const avdbsBtn = document.getElementById('actress-avdbs-btn');
 
       nameEl.textContent = actressName;
-      googleBtn.href = 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(actressName + ' actress');
+      const defaultSearchUrl = 'https://www.avdbs.com/menu/search.php?kwd=' + encodeURIComponent(actressName);
+      avdbsBtn.href = defaultSearchUrl;
 
       const relatedWorks = allItems.filter(i => (i.actress || []).some(a => a.toLowerCase() === actressName.toLowerCase()));
-      const fallbackWorkThumb = (relatedWorks.find(w => w.thumb) || {}).thumb || '';
+      const fallbackWorkThumb = (relatedWorks.find(w => isValidImageUrl(w.thumb)) || {}).thumb || '';
 
       filterBtn.onclick = () => {
         closeActressModal();
@@ -324,52 +400,39 @@
 
       modal.classList.remove('hidden');
 
-      if (actressImgCache[actressName]) {
-        renderActressImage(actressImgCache[actressName], fallbackWorkThumb, actressName, relatedWorks.length);
+      const cached = actressImgCache[actressName];
+      if (cached && isValidImageUrl(cached.imgUrl)) {
+        avdbsBtn.href = cached.pageUrl || defaultSearchUrl;
+        renderActressImage(cached.imgUrl, fallbackWorkThumb, actressName, relatedWorks.length);
         return;
       }
 
-      imgBox.innerHTML = '<div class="w-7 h-7 border-2 border-rose-500 border-t-transparent rounded-full animate-spin mb-2"></div><p class="text-xs text-slate-400">대표 프로필 이미지를 검색 중...</p>';
+      imgBox.innerHTML = '<div class="w-7 h-7 border-2 border-rose-500 border-t-transparent rounded-full animate-spin mb-2"></div><p class="text-xs text-slate-400">AVDBS에서 \'' + actressName + '\' 프로필 사진을 검색 중...</p>';
       descEl.textContent = '수집된 목록 내 출연작 ' + relatedWorks.length + '편';
 
-      let foundImageUrl = '';
-      try {
-        const wikiApis = [
-          'https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=' + encodeURIComponent(actressName) + '&gsrlimit=1&prop=pageimages&piprop=original|thumbnail&pithumbsize=600&format=json&origin=*',
-          'https://ja.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=' + encodeURIComponent(actressName) + '&gsrlimit=1&prop=pageimages&piprop=original|thumbnail&pithumbsize=600&format=json&origin=*'
-        ];
-        for (const apiUrl of wikiApis) {
-          const r = await fetch(apiUrl);
-          const j = await r.json();
-          const pages = j && j.query && j.query.pages ? Object.values(j.query.pages) : [];
-          if (pages.length > 0) {
-            const p = pages[0];
-            const imgCandidate = (p.original && p.original.source) || (p.thumbnail && p.thumbnail.source) || '';
-            if (imgCandidate && !imgCandidate.endsWith('.svg')) {
-              foundImageUrl = imgCandidate;
-              break;
-            }
-          }
-        }
-      } catch (e) {}
+      // 실시간 AVDBS 검색 실행
+      const result = await searchAvdbsActorPhoto(actressName);
+      if (result.pageUrl) avdbsBtn.href = result.pageUrl;
 
-      const finalImg = foundImageUrl || fallbackWorkThumb;
+      const finalImg = isValidImageUrl(result.imgUrl) ? result.imgUrl : fallbackWorkThumb;
       if (finalImg) {
-        actressImgCache[actressName] = finalImg;
-        safeStore.set('pjav_actress_img_cache', actressImgCache);
+        actressImgCache[actressName] = { imgUrl: finalImg, pageUrl: result.pageUrl || defaultSearchUrl };
+        safeStore.set('pjav_actress_img_v3', actressImgCache);
       }
+
       renderActressImage(finalImg, fallbackWorkThumb, actressName, relatedWorks.length);
     }
 
     function renderActressImage(primaryImg, workCoverImg, actressName, workCount) {
       const imgBox = document.getElementById('actress-img-box');
       const descEl = document.getElementById('actress-desc');
-      if (primaryImg) {
+      if (isValidImageUrl(primaryImg)) {
         const safeUrl = getSafeImageUrl(primaryImg);
-        imgBox.innerHTML = '<img src="' + safeUrl + '" referrerpolicy="no-referrer" class="w-full h-full object-contain bg-black">';
+        const backupUrl = isValidImageUrl(workCoverImg) ? getSafeImageUrl(workCoverImg) : '';
+        imgBox.innerHTML = '<img src="' + safeUrl + '" referrerpolicy="no-referrer" onerror="if(this.src!==\'' + backupUrl + '\' && \'' + backupUrl + '\'){this.src=\'' + backupUrl + '\';}else{this.style.display=\'none\';}" class="w-full h-full object-contain bg-black">';
         descEl.textContent = "현재 목록에 '" + actressName + "' 출연작이 총 " + workCount + "편 있습니다.";
       } else {
-        imgBox.innerHTML = '<span class="text-3xl mb-2">👩</span><p class="text-xs text-slate-400 text-center px-4">프로필 사진이 없습니다.<br>아래 [구글 화보 검색]을 눌러 확인해 보세요.</p>';
+        imgBox.innerHTML = '<span class="text-3xl mb-2">👩</span><p class="text-xs text-slate-400 text-center px-4">프로필 사진을 직접 불러오지 못했습니다.<br>아래 [🔎 AVDBS 프로필 열기]를 눌러 확인해 보세요.</p>';
         descEl.textContent = '현재 목록 내 출연작: ' + workCount + '편';
       }
     }
@@ -462,7 +525,7 @@
                   ${item.actress.map(a => `
                     <button onclick="openActressModal('${a.replace(/'/g, "\\'")}')" class="text-[11px] bg-rose-500/20 hover:bg-rose-500/30 active:scale-95 border border-rose-500/40 text-rose-300 px-2.5 py-1 rounded-lg font-extrabold flex items-center space-x-1 transition">
                       <span>👩 ${a}</span>
-                      <span class="text-[9px] text-rose-400">🔍사진</span>
+                      <span class="text-[9px] text-rose-400">🔍AVDBS</span>
                     </button>
                   `).join('')}
                   ${item.tags.map(t => `
