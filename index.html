@@ -20,14 +20,15 @@
       -webkit-tap-highlight-color: transparent;
       font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
       padding-top: env(safe-area-inset-top);
-      padding-bottom: calc(4.8rem + env(safe-area-inset-bottom));
+      padding-bottom: calc(5rem + env(safe-area-inset-bottom));
     }
     .scrollbar-none::-webkit-scrollbar { display: none; }
     .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen select-none">
+<body class="bg-slate-950 text-slate-100 min-h-screen select-none">
 
+  <!-- 상단 고정 헤더 -->
   <header class="bg-slate-900/95 backdrop-blur border-b border-slate-800 sticky top-0 z-30 px-4 py-3">
     <div class="max-w-md mx-auto flex items-center justify-between">
       <div class="flex items-center space-x-2">
@@ -43,19 +44,24 @@
     </div>
   </header>
 
-  <main class="max-w-md mx-auto p-4 space-y-4">
-    <input type="text" id="search-input" oninput="renderItems()" placeholder="품번, 제목, 날짜 실시간 검색..." class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none">
+  <!-- 메인 컨텐츠 -->
+  <main class="max-w-md mx-auto p-3.5 space-y-4">
+    <!-- 실시간 검색창 -->
+    <input type="text" id="search-input" oninput="renderItems()" placeholder="품번(예: Muka-011), 배우, 태그 검색..." class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 outline-none">
 
+    <!-- 일자별 탭 필터 -->
     <div id="date-tabs" class="flex space-x-1.5 overflow-x-auto pb-1 scrollbar-none"></div>
 
+    <!-- 작품 카드 리스트 -->
     <div id="items-container" class="space-y-6"></div>
   </main>
 
+  <!-- 하단 네비게이션 -->
   <nav class="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-800 z-30" style="padding-bottom: env(safe-area-inset-bottom);">
     <div class="max-w-md mx-auto grid grid-cols-3 py-2">
       <button onclick="switchView('list')" id="nav-list" class="flex flex-col items-center text-indigo-400">
         <span class="text-lg">📅</span>
-        <span class="text-[11px] font-bold mt-0.5">일자별 목록</span>
+        <span class="text-[11px] font-bold mt-0.5">일자별 작품</span>
       </button>
       <button onclick="switchView('saved')" id="nav-saved" class="flex flex-col items-center text-slate-500 relative">
         <span class="text-lg">⭐</span>
@@ -69,60 +75,57 @@
     </div>
   </nav>
 
-  <!-- 상세 및 첨부파일 모달 -->
-  <div id="detail-modal" class="fixed inset-0 bg-black/85 z-50 hidden flex items-end sm:items-center justify-center sm:p-4">
-    <div class="bg-slate-800 border border-slate-700 rounded-t-3xl sm:rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-4 shadow-2xl">
-      <div class="flex justify-between items-start border-b border-slate-700 pb-3">
-        <div class="pr-2">
-          <span id="modal-date" class="text-[11px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-bold">날짜</span>
-          <h3 id="modal-title" class="font-extrabold text-base text-white mt-1.5 break-all leading-snug">제목</h3>
-        </div>
-        <button onclick="closeDetailModal()" class="text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
-      </div>
-
-      <div id="modal-images" class="rounded-xl bg-slate-950 overflow-hidden"></div>
-
-      <div class="space-y-2">
-        <h4 class="text-xs font-extrabold text-slate-300 flex items-center justify-between">
-          <span>📥 첨부파일 & 마그넷 다운로드</span>
-          <span id="modal-file-count" class="text-[11px] text-indigo-400"></span>
-        </h4>
-        <div id="modal-attachments" class="space-y-2"></div>
-      </div>
-
-      <div class="flex space-x-2 pt-2">
-        <button id="modal-save-btn" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-bold text-xs">⭐ 보관함 저장</button>
-        <a id="modal-origin-link" href="#" target="_blank" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl font-bold text-xs text-center">🔗 원본 페이지 열기</a>
-      </div>
-    </div>
+  <!-- 토스트 알림 -->
+  <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg hidden z-50">
+    마그넷 주소가 복사되었습니다!
   </div>
 
   <script>
     let allItems = [];
-    let savedItems = JSON.parse(localStorage.getItem('pjav_saved_items') || '[]');
+    let savedItems = JSON.parse(localStorage.getItem('pjav_saved_v2') || '[]');
     let currentView = 'list';
     let currentDateFilter = 'ALL';
 
     function getSafeImageUrl(url) {
       if (!url) return '';
-      return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=640&output=webp`;
+      return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=800&output=webp`;
+    }
+
+    window.handleImgError = function(imgEl, origUrl) {
+      if (!imgEl.dataset.fallback && origUrl) {
+        imgEl.dataset.fallback = '1';
+        imgEl.src = origUrl;
+      } else {
+        imgEl.parentElement.style.display = 'none';
+      }
+    };
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 2000);
+    }
+
+    function copyText(txt) {
+      navigator.clipboard.writeText(txt).then(() => showToast('📋 마그넷 링크가 클립보드에 복사되었습니다!'));
     }
 
     async function loadDataJson() {
       try {
         const res = await fetch(`./data.json?t=${Date.now()}`);
-        if (!res.ok) throw new Error('아직 data.json 파일이 생성되지 않았습니다.');
+        if (!res.ok) throw new Error('data.json 로드 실패');
         const data = await res.json();
         allItems = data.items || [];
-        document.getElementById('status-text').textContent = `⚡ 최근 수집: ${data.updatedAt || '방금 전'} (${allItems.length}건)`;
+        document.getElementById('status-text').textContent = `⚡ 최근 수집: ${data.updatedAt || ''} (총 ${allItems.length}작품)`;
         renderDateTabs();
         renderItems();
       } catch (err) {
         document.getElementById('status-text').textContent = '수집 대기 중';
         document.getElementById('items-container').innerHTML = `
-          <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 text-xs text-slate-300 space-y-2 leading-relaxed">
-            <p class="font-extrabold text-sm text-indigo-400">🤖 GitHub Actions 첫 데이터 수집 중입니다!</p>
-            <p>GitHub 저장소 상단의 <strong>[Actions]</strong> 탭에서 초록색 체크(완료)가 뜬 뒤 <strong>[🔄 목록 갱신]</strong>을 누르면 0.1초 만에 전체 목록과 이미지가 표시됩니다.</p>
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-xs text-slate-300 space-y-2">
+            <p class="font-extrabold text-sm text-indigo-400">🤖 데이터 업데이트 중입니다</p>
+            <p>GitHub 저장소의 [Actions] 탭에서 작업이 완료(초록색 체크)된 후 상단 [🔄 목록 갱신]을 눌러주세요.</p>
           </div>
         `;
       }
@@ -132,14 +135,31 @@
       const dates = ['ALL', ...new Set(allItems.map(i => i.date))];
       document.getElementById('date-tabs').innerHTML = dates.map(d => {
         const active = currentDateFilter === d;
-        const label = d === 'ALL' ? `전체 (${allItems.length})` : d;
-        return `<button onclick="setDateFilter('${d}')" class="px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition ${active ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-400 border border-slate-700'}">${label}</button>`;
+        const count = d === 'ALL' ? allItems.length : allItems.filter(x => x.date === d).length;
+        const label = d === 'ALL' ? `전체 (${count})` : `${d} (${count})`;
+        return `<button onclick="setDateFilter('${d}')" class="px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition ${active ? 'bg-indigo-600 text-white shadow' : 'bg-slate-900 text-slate-400 border border-slate-800'}">${label}</button>`;
       }).join('');
     }
 
     function setDateFilter(d) {
       currentDateFilter = d;
       renderDateTabs();
+      renderItems();
+    }
+
+    function toggleSave(encodedUrl) {
+      const url = decodeURIComponent(encodedUrl);
+      const item = allItems.find(i => i.url === url) || savedItems.find(i => i.url === url);
+      if (!item) return;
+      const idx = savedItems.findIndex(s => s.url === url);
+      if (idx >= 0) {
+        savedItems.splice(idx, 1);
+        showToast('보관함에서 제거되었습니다.');
+      } else {
+        savedItems.unshift(item);
+        showToast('⭐ 보관함에 저장되었습니다!');
+      }
+      localStorage.setItem('pjav_saved_v2', JSON.stringify(savedItems));
       renderItems();
     }
 
@@ -150,115 +170,102 @@
 
       const filtered = source.filter(i => {
         const matchDate = currentView === 'saved' || currentDateFilter === 'ALL' || i.date === currentDateFilter;
-        const matchQuery = !query || i.title.toLowerCase().includes(query) || i.date.toLowerCase().includes(query);
+        const hay = `${i.title} ${(i.actress || []).join(' ')} ${(i.tags || []).join(' ')} ${i.date}`.toLowerCase();
+        const matchQuery = !query || hay.includes(query);
         return matchDate && matchQuery;
       });
-
-      if (filtered.length === 0) {
-        container.innerHTML = `<div class="bg-slate-800/50 border border-slate-800 rounded-2xl p-8 text-center text-xs text-slate-400">표시할 항목이 없습니다.</div>`;
-        return;
-      }
-
-      const grouped = {};
-      filtered.forEach(item => {
-        const k = item.date || '최근 업데이트';
-        if (!grouped[k]) grouped[k] = [];
-        grouped[k].push(item);
-      });
-
-      container.innerHTML = Object.entries(grouped).map(([dateKey, list]) => `
-        <div class="space-y-3">
-          <div class="flex items-center justify-between px-1">
-            <h2 class="text-xs font-extrabold text-indigo-400">📅 ${dateKey}</h2>
-            <span class="text-[11px] text-slate-500 font-bold">${list.length}건</span>
-          </div>
-          <div class="space-y-3">
-            ${list.map(item => {
-              const safeImg = getSafeImageUrl(item.thumb);
-              const fileCount = (item.files || []).length;
-              return `
-                <div onclick="openDetail('${encodeURIComponent(item.url)}')" class="bg-slate-800 border border-slate-700/80 rounded-2xl overflow-hidden cursor-pointer active:scale-[0.99] transition shadow-md">
-                  ${safeImg ? `
-                    <div class="w-full h-44 bg-slate-950 relative">
-                      <img src="${safeImg}" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentElement.style.display='none'" class="w-full h-full object-cover">
-                      <span class="absolute top-2 left-2 bg-black/70 text-[10px] text-indigo-300 font-bold px-2 py-0.5 rounded">${item.date}</span>
-                    </div>
-                  ` : ''}
-                  <div class="p-3.5 flex items-center justify-between space-x-2">
-                    <div class="overflow-hidden">
-                      <h3 class="font-bold text-sm text-slate-100 leading-snug line-clamp-2">${item.title}</h3>
-                      <span class="inline-block mt-1.5 text-[10px] px-2 py-0.5 rounded font-bold ${fileCount > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-300'}">
-                        ${fileCount > 0 ? `📥 첨부파일 ${fileCount}개 즉시 다운로드` : '🔗 상세/원본 이동'}
-                      </span>
-                    </div>
-                    <span class="text-slate-400 text-lg shrink-0">📥</span>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      `).join('');
 
       const badge = document.getElementById('saved-badge');
       badge.textContent = savedItems.length;
       badge.classList.toggle('hidden', savedItems.length === 0);
-    }
 
-    function openDetail(encodedUrl) {
-      const url = decodeURIComponent(encodedUrl);
-      const item = allItems.find(i => i.url === url) || savedItems.find(i => i.url === url);
-      if (!item) return;
-
-      document.getElementById('modal-date').textContent = item.date;
-      document.getElementById('modal-title').textContent = item.title;
-      document.getElementById('modal-origin-link').href = item.url;
-
-      const imgBox = document.getElementById('modal-images');
-      imgBox.innerHTML = item.thumb
-        ? `<img src="${getSafeImageUrl(item.thumb)}" referrerpolicy="no-referrer" class="w-full max-h-72 object-contain mx-auto">`
-        : '';
-
-      const files = item.files || [];
-      document.getElementById('modal-file-count').textContent = `${files.length}개 파일`;
-      const attBox = document.getElementById('modal-attachments');
-
-      if (files.length === 0) {
-        attBox.innerHTML = `<div class="bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-400">아래 [원본 페이지 열기]에서 파일을 직접 다운로드하세요.</div>`;
-      } else {
-        attBox.innerHTML = files.map(f => {
-          const isMag = f.url.startsWith('magnet:');
-          return `
-            <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-center justify-between space-x-2">
-              <div class="overflow-hidden">
-                <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${isMag ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">${isMag ? '🧲 MAGNET' : '📄 FILE'}</span>
-                <p class="text-xs font-bold text-white truncate mt-1">${f.label}</p>
-              </div>
-              <div class="flex space-x-1.5 shrink-0">
-                <button onclick="navigator.clipboard.writeText('${f.url.replace(/'/g, "\\'")}'); alert('복사 완료!');" class="bg-slate-800 text-slate-200 px-2.5 py-2 rounded-lg text-xs font-bold">복사</button>
-                <a href="${f.url}" download target="_blank" class="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-extrabold">다운로드</a>
-              </div>
-            </div>
-          `;
-        }).join('');
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-xs text-slate-400">표시할 작품이 없습니다.</div>`;
+        return;
       }
 
-      const saveBtn = document.getElementById('modal-save-btn');
-      const isSaved = savedItems.some(s => s.url === item.url);
-      saveBtn.textContent = isSaved ? '🗑️ 보관함에서 제거' : '⭐ 보관함 저장';
-      saveBtn.onclick = () => {
-        const idx = savedItems.findIndex(s => s.url === item.url);
-        if (idx >= 0) savedItems.splice(idx, 1);
-        else savedItems.unshift(item);
-        localStorage.setItem('pjav_saved_items', JSON.stringify(savedItems));
-        closeDetailModal();
-        renderItems();
-      };
+      container.innerHTML = filtered.map(item => {
+        const safeImg = getSafeImageUrl(item.thumb);
+        const origImg = (item.thumb || '').replace(/'/g, "\\'");
+        const isSaved = savedItems.some(s => s.url === item.url);
+        const torrents = item.torrents || [];
 
-      document.getElementById('detail-modal').classList.remove('hidden');
+        return `
+          <article class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+            <!-- 1. 상단 커버 이미지 (원본 비율 유지) -->
+            ${safeImg ? `
+              <div class="w-full bg-black relative">
+                <img src="${safeImg}" referrerpolicy="no-referrer" loading="lazy" onerror="handleImgError(this, '${origImg}')" class="w-full max-h-96 object-contain mx-auto">
+              </div>
+            ` : ''}
+
+            <!-- 2. 작품명, 날짜, 배우, 태그 영역 -->
+            <div class="p-4 space-y-2.5">
+              <div class="flex items-start justify-between gap-2">
+                <a href="${item.url}" target="_blank" class="font-extrabold text-base text-white hover:text-indigo-400 leading-snug break-words">
+                  ${item.title}
+                </a>
+                <button onclick="toggleSave('${encodeURIComponent(item.url)}')" class="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold border ${isSaved ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}">
+                  ${isSaved ? '★ 저장됨' : '☆ 보관'}
+                </button>
+              </div>
+
+              <div class="flex items-center space-x-2 text-xs text-slate-400">
+                <span class="font-bold text-indigo-400">📅 ${item.displayDate || item.date}</span>
+                <span>·</span>
+                <a href="${item.url}" target="_blank" class="underline hover:text-slate-200">원본 보기 ↗</a>
+              </div>
+
+              <!-- 배우 및 태그 배지 -->
+              ${(item.actress?.length || item.tags?.length) ? `
+                <div class="flex flex-wrap gap-1.5 pt-0.5">
+                  ${(item.actress || []).map(a => `<span class="text-[11px] bg-rose-500/20 border border-rose-500/30 text-rose-300 px-2 py-0.5 rounded font-bold">👩 ${a}</span>`).join('')}
+                  ${(item.tags || []).map(t => `<span class="text-[11px] bg-slate-800 border border-slate-700 text-slate-300 px-2 py-0.5 rounded">${t}</span>`).join('')}
+                </div>
+              ` : ''}
+
+              <!-- 3. 하단 토렌트 Download & Magnet 목록 (원본 사이트처럼 한 카드 아래에 바로 나열) -->
+              <div class="pt-2 border-t border-slate-800/80 space-y-2">
+                ${torrents.length > 0 ? torrents.map(t => `
+                  <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                    <!-- 좌측: Download & Magnet 버튼 -->
+                    <div class="flex items-center space-x-1.5 shrink-0">
+                      ${t.downloadUrl ? `
+                        <a href="${t.downloadUrl}" target="_blank" download class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1 transition">
+                          <span>📥</span><span>Download</span>
+                        </a>
+                      ` : ''}
+                      ${t.magnetUrl ? `
+                        <a href="${t.magnetUrl}" class="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1 transition">
+                          <span>🧲</span><span>Magnet</span>
+                        </a>
+                        <button onclick="copyText('${t.magnetUrl.replace(/'/g, "\\'")}')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold px-2 py-1.5 rounded-lg" title="마그넷 복사">
+                          복사
+                        </button>
+                      ` : ''}
+                    </div>
+
+                    <!-- 우측: 용량(GB) · 시드(S/L) · 등록일 -->
+                    <div class="text-right text-[11px] leading-tight">
+                      <div class="font-extrabold text-emerald-400">${t.size || ''}</div>
+                      <div class="text-slate-400">
+                        ${t.seeds ? `<span class="text-sky-400">S:${t.seeds}</span> ` : ''}
+                        ${t.leeches ? `<span class="text-amber-400">L:${t.leeches}</span> ` : ''}
+                        ${t.date ? `<span>${t.date}</span>` : ''}
+                      </div>
+                    </div>
+                  </div>
+                `).join('') : `
+                  <a href="${item.url}" target="_blank" class="block w-full text-center bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-2.5 rounded-xl">
+                    🔗 원본 페이지에서 다운로드 확인
+                  </a>
+                `}
+              </div>
+            </div>
+          </article>
+        `;
+      }).join('');
     }
-
-    function closeDetailModal() { document.getElementById('detail-modal').classList.add('hidden'); }
 
     function switchView(v) {
       currentView = v;
