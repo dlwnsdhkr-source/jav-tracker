@@ -1,16 +1,18 @@
 import json
 import re
+import time
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, quote
 import cloudscraper
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://projectjav.com"
+AVDBS_BASE = "https://www.avdbs.com"
 
-def get_html(scraper, url):
+def get_html(scraper, url, headers=None):
     try:
-        res = scraper.get(url, timeout=25)
-        if res.status_code == 200 and "Just a moment" not in res.text and len(res.text) > 500:
+        res = scraper.get(url, headers=headers, timeout=25)
+        if res.status_code == 200 and "Just a moment" not in res.text and len(res.text) > 300:
             return res.text
     except Exception as e:
         print(f"[cloudscraper 실패] {url}: {e}")
@@ -20,11 +22,12 @@ def get_html(scraper, url):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                locale="ko-KR"
             )
             page = context.new_page()
             page.goto(url, wait_until="domcontentloaded", timeout=35000)
-            page.wait_for_timeout(4000)
+            page.wait_for_timeout(3000)
             html = page.content()
             browser.close()
             return html
@@ -32,10 +35,73 @@ def get_html(scraper, url):
         print(f"[Playwright 실패] {url}: {e}")
     return ""
 
+def search_avdbs_actor(scraper, actor_name):
+    """AVDBS(avdbs.com)에서 배우 이름을 검색하여 프로필 이미지, 한글명, 상세 페이지 주소를 반환"""
+    parts = actor_name.strip().split()
+    queries = [actor_name.strip()]
+    if len(parts) == 2:
+        # 'Hana Himesaki' -> 'Himesaki Hana' 역순 검색어 추가
+        queries.append(f"{parts[1]} {parts[0]}")
+
+    headers = {
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.avdbs.com/menu/actor_list.php"
+    }
+
+    for q in queries:
+        search_urls = [
+            f"https://www.avdbs.com/menu/search.php?kwd={quote(q)}",
+            f"https://www.avdbs.com/menu/actor_list.php?kwd={quote(q)}&_s=1"
+        ]
+        for s_url in search_urls:
+            try:
+                res = scraper.get(s_url, headers=headers, timeout=15)
+                if res.status_code != 200:
+                    continue
+                soup = BeautifulSoup(res.text, "html.parser")
+
+                # 배우 상세 링크(/menu/actor.php?actor_idx=...) 블록 탐색
+                actor_links = soup.select('a[href*="actor.php?actor_idx="]')
+                for a in actor_links:
+                    card = a.parent
+                    for _ in range(4):
+                        if not card:
+                            break
+                        if card.find("img"):
+                            break
+                        card = card.parent
+                    if not card:
+                        card = a
+
+                    img = card.find("img")
+                    if not img:
+                        continue
+                    img_src = img.get("data-src") or img.get("src") or ""
+                    if not img_src or "logo" in img_src.lower() or "blank" in img_src.lower():
+                        continue
+
+                    full_img = urljoin(AVDBS_BASE, img_src)
+                    full_profile = urljoin(AVDBS_BASE, a["href"])
+                    card_text = re.sub(r"\s+", " ", card.get_text(" ", strip=True))
+
+                    # 한글 이름 추출
+                    kor_m = re.search(r"[가-힣]{2,10}(?:\s+[가-힣]{1,10})?", card_text)
+                    kor_name = kor_m.group(0) if kor_m else ""
+
+                    return {
+                        "name": actor_name,
+                        "korName": kor_name,
+                        "photo": full_img,
+                        "profileUrl": full_profile,
+                        "desc": card_text[:100]
+                    }
+            except Exception as e:
+                print(f"[AVDBS 검색 오류] {q}: {e}")
+    return None
+
 def normalize_date(raw_date):
     if not raw_date:
         return datetime.now().strftime("%Y-%m-%d")
-    # DD/MM/YYYY 또는 DD/MM/YY 형태를 YYYY-MM-DD로 통일
     m1 = re.search(r"(\d{1,2})/(\d{1,2})/(20\d{2}|\d{2})", raw_date)
     if m1:
         d, m, y = m1.groups()
@@ -60,7 +126,6 @@ def extract_cover_image(card):
             if val.startswith("data:") or any(x in low for x in ["logo", "icon", "blank", "spinner", "avatar", "flag"]):
                 continue
             return urljoin(BASE_URL, val)
-    # style background-image 체크
     for tag in card.find_all(style=True):
         m = re.search(r"url\(['\"]?([^'\")]+)['\"]?\)", tag["style"])
         if m:
@@ -68,29 +133,22 @@ def extract_cover_image(card):
     return ""
 
 def extract_torrents_from_card(card):
-    """카드 내부의 Download(.torrent)와 Magnet 링크를 행(용량/시드/날짜) 단위로 묶어 추출"""
     torrents = []
     seen_urls = set()
-
-    # 1. Magnet 링크 기준으로 주변(같은 줄/블록)에서 짝꿍 Download 링크와 용량(GB/MB) 찾기
     all_links = card.find_all("a", href=True)
     used_dl_urls = set()
 
     for a in all_links:
         href = a["href"].strip()
-        if not href.startswith("magnet:"):
-            continue
-        if href in seen_urls:
+        if not href.startswith("magnet:") or href in seen_urls:
             continue
         seen_urls.add(href)
 
-        # 마그넷 링크가 속한 한 줄(row) 컨테이너 찾기
         row = a.parent
         while row and row != card and len(row.get_text(" ", strip=True)) < 18:
             row = row.parent
         row_text = row.get_text(" ", strip=True) if row else ""
 
-        # 같은 줄에 있는 .torrent 다운로드 링크 찾기
         paired_dl = ""
         if row:
             for sib in row.find_all("a", href=True):
@@ -103,7 +161,6 @@ def extract_torrents_from_card(card):
 
         size_m = re.search(r"(\d+(?:\.\d+)?\s*(?:gb|mb))", row_text, re.I)
         date_m = re.search(r"(\d{1,2}/\d{1,2}/\d{2,4})", row_text)
-        # 시드(S), 리처(L) 숫자 추출
         nums = re.findall(r"\b\d+\b", re.sub(r"\d+(?:\.\d+)?\s*(?:gb|mb)|\d{1,2}/\d{1,2}/\d{2,4}", "", row_text, flags=re.I))
         seeds = nums[0] if len(nums) >= 1 else ""
         leeches = nums[1] if len(nums) >= 2 else ""
@@ -117,11 +174,10 @@ def extract_torrents_from_card(card):
             "magnetUrl": href
         })
 
-    # 2. 만약 마그넷 없이 단독 Download(.torrent) 링크만 있는 경우 추가
     for a in all_links:
         href = a["href"].strip()
         txt = a.get_text(" ", strip=True).lower()
-        if href.startswith("magnet:") or href.startswith("#") or href.startswith("javascript"):
+        if href.startswith(("magnet:", "#", "javascript")):
             continue
         if "download" in txt or ".torrent" in href.lower():
             full_dl = urljoin(BASE_URL, href)
@@ -149,25 +205,20 @@ def parse_page_items(html):
     soup = BeautifulSoup(html, "html.parser")
     items = []
     seen_movies = set()
-
-    # 작품 제목 링크 탐색 (Download, Magnet, 태그, 배우 링크는 제외하고 실제 작품 링크만 골라냄)
     ignore_words = {"download", "magnet", "screenshot", "more torrents >>", "more torrents", "suggest an idea", "login", "register"}
 
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
         title = a.get_text(" ", strip=True)
-        if not title or len(title) < 5:
-            continue
-        if title.lower() in ignore_words:
+        if not title or len(title) < 5 or title.lower() in ignore_words:
             continue
         if href.startswith(("#", "javascript", "magnet:")):
             continue
         if any(seg in href.lower() for seg in ["/tag/", "/actress/", "/actor/", "/genre/", "/category/", "/search", "?page=", "/download"]):
             continue
 
-        # 품번 형태(예: Muka-011, ATYA-048 등)가 들어있거나 /movie/ 경로인 링크를 작품 제목으로 확정
         has_code = bool(re.search(r"\b[A-Za-z]{2,6}-\d{2,5}\b", title))
-        is_movie_url = "/movie/" in href.lower() or "/video/" in href.lower() or "/post/" in href.lower()
+        is_movie_url = any(p in href.lower() for p in ["/movie/", "/video/", "/post/"])
         if not (has_code or is_movie_url):
             continue
 
@@ -175,7 +226,6 @@ def parse_page_items(html):
         if movie_url in seen_movies:
             continue
 
-        # 이 작품 제목을 감싸고 있는 전체 카드(부모 컨테이너: 이미지 + 다운로드 목록을 모두 포함한 블록) 찾기
         card = a.parent
         best_card = card
         for _ in range(7):
@@ -189,13 +239,10 @@ def parse_page_items(html):
             card = card.parent
 
         card_text = best_card.get_text(" ", strip=True)
-
-        # 카드 내 게시 날짜 추출 (예: 17/11/2026)
         date_m = re.search(r"(\d{1,2}/\d{1,2}/20\d{2})|(20\d{2}-\d{1,2}-\d{1,2})", card_text)
         raw_date = date_m.group(0) if date_m else ""
         norm_date = normalize_date(raw_date)
 
-        # 배우 및 태그 추출
         tags = []
         actress = []
         for t_a in best_card.find_all("a", href=True):
@@ -203,10 +250,10 @@ def parse_page_items(html):
             tt = t_a.get_text(" ", strip=True)
             if not tt or tt == title or tt.lower() in ignore_words:
                 continue
-            if "/actress/" in th or "/actor/" in th or "/star/" in th:
+            if any(k in th for k in ["/actress/", "/actor/", "/star/", "/cast/"]):
                 if tt not in actress:
                     actress.append(tt)
-            elif "/tag/" in th or "/genre/" in th or "/category/" in th:
+            elif any(k in th for k in ["/tag/", "/genre/", "/category/"]):
                 if tt not in tags:
                     tags.append(tt)
 
@@ -235,27 +282,41 @@ def main():
     all_items = []
     seen = set()
 
-    # 최신 1~3페이지 수집
     for p in [1, 2, 3]:
         url = BASE_URL if p == 1 else f"{BASE_URL}/?page={p}"
         html = get_html(scraper, url)
         if not html:
             continue
-        page_items = parse_page_items(html)
-        for item in page_items:
+        for item in parse_page_items(html):
             if item["url"] not in seen:
                 seen.add(item["url"])
                 all_items.append(item)
 
+    # 등장한 배우들의 프로필 이미지를 avdbs.com에서 자동 검색하여 매핑
+    unique_actors = []
+    for item in all_items:
+        for act in item.get("actress", []):
+            if act not in unique_actors:
+                unique_actors.append(act)
+
+    actors_map = {}
+    for act_name in unique_actors[:45]:
+        info = search_avdbs_actor(scraper, act_name)
+        if info:
+            actors_map[act_name] = info
+            print(f"[AVDBS 매칭 성공] {act_name} -> {info.get('korName')} ({info.get('photo')})")
+        time.sleep(0.25)
+
     payload = {
         "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "total": len(all_items),
+        "actors": actors_map,
         "items": all_items
     }
 
     with open("data.json", "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
-    print(f"수집 완료: 총 {len(all_items)}개 작품 카드 저장됨")
+    print(f"수집 완료: 작품 {len(all_items)}개, AVDBS 배우 프로필 {len(actors_map)}명 저장됨")
 
 if __name__ == "__main__":
     main()
