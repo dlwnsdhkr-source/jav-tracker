@@ -5,17 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>ProjectJAV 업데이터</title>
 
-  <!-- 모바일 전체 화면 (개별 PWA 앱) 메타 태그 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PJAV앱">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0f172a">
   <meta name="referrer" content="no-referrer">
-  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2989/2989976.png">
   <link rel="manifest" href="./manifest.json">
 
-  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
@@ -31,54 +28,29 @@
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen select-none">
 
-  <!-- 상단 고정 헤더 -->
   <header class="bg-slate-900/95 backdrop-blur border-b border-slate-800 sticky top-0 z-30 px-4 py-3">
     <div class="max-w-md mx-auto flex items-center justify-between">
       <div class="flex items-center space-x-2">
         <span class="text-xl">⚡</span>
         <div>
           <h1 class="font-extrabold text-base text-white leading-tight">ProjectJAV 업데이터</h1>
-          <p id="status-text" class="text-[11px] text-slate-400">초기화 중...</p>
+          <p id="status-text" class="text-[11px] text-slate-400">데이터 불러오는 중...</p>
         </div>
       </div>
-      <div class="flex items-center space-x-1.5">
-        <button onclick="fetchBoardData(true)" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow active:scale-95 transition flex items-center space-x-1">
-          <span id="refresh-icon" class="inline-block">🔄</span>
-          <span>새로고침</span>
-        </button>
-        <button onclick="openSettings()" class="p-2 text-slate-400 hover:text-white rounded-full text-lg">⚙️</button>
-      </div>
+      <button onclick="loadDataJson()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow active:scale-95 transition">
+        🔄 목록 갱신
+      </button>
     </div>
   </header>
 
-  <!-- 메인 컨텐츠 -->
   <main class="max-w-md mx-auto p-4 space-y-4">
+    <input type="text" id="search-input" oninput="renderItems()" placeholder="품번, 제목, 날짜 실시간 검색..." class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none">
 
-    <!-- 검색 및 페이지 이동 바 -->
-    <div class="flex space-x-2">
-      <input type="text" id="search-input" oninput="renderItems()" placeholder="품번, 제목, 날짜 실시간 검색..." class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none">
-      <button onclick="changePage(-1)" class="bg-slate-800 border border-slate-700 px-3 rounded-xl text-xs font-bold text-slate-300 active:scale-95">◀</button>
-      <span id="page-indicator" class="bg-slate-800 border border-slate-700 px-3 py-2.5 rounded-xl text-xs font-extrabold text-indigo-400">1P</span>
-      <button onclick="changePage(1)" class="bg-slate-800 border border-slate-700 px-3 rounded-xl text-xs font-bold text-slate-300 active:scale-95">▶</button>
-    </div>
+    <div id="date-tabs" class="flex space-x-1.5 overflow-x-auto pb-1 scrollbar-none"></div>
 
-    <!-- 일자별 탭 필터 -->
-    <div id="date-tabs" class="flex space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
-      <button onclick="setDateFilter('ALL')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-indigo-600 text-white shrink-0">전체 일자</button>
-    </div>
-
-    <!-- 로딩 스피너 -->
-    <div id="loading-box" class="hidden bg-slate-800/80 border border-slate-700 rounded-2xl p-8 text-center space-y-2">
-      <div class="inline-block w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-      <p class="text-xs text-slate-300">우회 서버를 통해 최신 목록과 이미지를 가져오는 중...</p>
-    </div>
-
-    <!-- 게시물 카드 리스트 -->
     <div id="items-container" class="space-y-6"></div>
-
   </main>
 
-  <!-- 하단 네비게이션 -->
   <nav class="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-800 z-30" style="padding-bottom: env(safe-area-inset-bottom);">
     <div class="max-w-md mx-auto grid grid-cols-3 py-2">
       <button onclick="switchView('list')" id="nav-list" class="flex flex-col items-center text-indigo-400">
@@ -90,14 +62,14 @@
         <span class="text-[11px] font-bold mt-0.5">보관함</span>
         <span id="saved-badge" class="hidden absolute top-0 right-8 bg-rose-500 text-white text-[10px] font-extrabold w-4 h-4 rounded-full flex items-center justify-center">0</span>
       </button>
-      <button onclick="openDirectUrl()" class="flex flex-col items-center text-slate-500">
+      <a href="https://projectjav.com" target="_blank" class="flex flex-col items-center text-slate-500">
         <span class="text-lg">🌐</span>
         <span class="text-[11px] font-bold mt-0.5">원본 사이트</span>
-      </button>
+      </a>
     </div>
   </nav>
 
-  <!-- 상세 보기 & 이미지 갤러리 & 첨부파일 다운로드 모달 -->
+  <!-- 상세 및 첨부파일 모달 -->
   <div id="detail-modal" class="fixed inset-0 bg-black/85 z-50 hidden flex items-end sm:items-center justify-center sm:p-4">
     <div class="bg-slate-800 border border-slate-700 rounded-t-3xl sm:rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 space-y-4 shadow-2xl">
       <div class="flex justify-between items-start border-b border-slate-700 pb-3">
@@ -108,339 +80,57 @@
         <button onclick="closeDetailModal()" class="text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
       </div>
 
-      <!-- 프리뷰 이미지 영역 -->
-      <div id="modal-images" class="space-y-2.5 max-h-80 overflow-y-auto rounded-xl bg-slate-900 p-2"></div>
+      <div id="modal-images" class="rounded-xl bg-slate-950 overflow-hidden"></div>
 
-      <!-- 첨부파일 및 마그넷 다운로드 영역 -->
       <div class="space-y-2">
         <h4 class="text-xs font-extrabold text-slate-300 flex items-center justify-between">
-          <span>📥 추출된 첨부파일 & 마그넷 링크</span>
-          <span id="modal-file-count" class="text-[11px] text-indigo-400">탐색 중...</span>
+          <span>📥 첨부파일 & 마그넷 다운로드</span>
+          <span id="modal-file-count" class="text-[11px] text-indigo-400"></span>
         </h4>
         <div id="modal-attachments" class="space-y-2"></div>
       </div>
 
       <div class="flex space-x-2 pt-2">
-        <button id="modal-save-btn" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-bold text-xs">⭐ 보관함에 저장</button>
-        <a id="modal-origin-link" href="#" target="_blank" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl font-bold text-xs text-center">🔗 원본 웹페이지 열기</a>
-      </div>
-    </div>
-  </div>
-
-  <!-- 프록시 및 설정 모달 -->
-  <div id="settings-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
-      <div class="flex justify-between items-center border-b border-slate-700 pb-2">
-        <h3 class="font-extrabold text-base text-white">⚙️ 연결 및 이미지 프록시 설정</h3>
-        <button onclick="closeSettings()" class="text-slate-400 text-lg">✕</button>
-      </div>
-      <div class="space-y-3 text-xs">
-        <div>
-          <label class="block font-bold text-slate-300 mb-1">대상 사이트 주소 (Base URL)</label>
-          <input type="text" id="input-base-url" value="https://projectjav.com" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none">
-        </div>
-        <div>
-          <label class="block font-bold text-slate-300 mb-1">웹 크롤링 프록시 선택</label>
-          <select id="input-proxy-mode" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none">
-            <option value="auto">자동 최단시간 응답 서버 (추천)</option>
-            <option value="allorigins_json">AllOrigins JSON (안정적)</option>
-            <option value="corsproxy">CorsProxy.io</option>
-            <option value="codetabs">CodeTabs Proxy</option>
-          </select>
-        </div>
-        <label class="flex items-center space-x-2 pt-1 cursor-pointer">
-          <input type="checkbox" id="input-img-proxy" checked class="rounded text-indigo-600 w-4 h-4">
-          <span class="text-slate-300 font-bold">이미지 차단 우회 프록시(wsrv.nl) 사용</span>
-        </label>
-      </div>
-      <div class="flex space-x-2">
-        <button onclick="clearCacheAndReload()" class="flex-1 bg-rose-900/60 text-rose-200 py-2.5 rounded-xl font-bold text-xs">캐시 초기화</button>
-        <button onclick="saveSettings()" class="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl font-bold text-xs">설정 저장</button>
+        <button id="modal-save-btn" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-bold text-xs">⭐ 보관함 저장</button>
+        <a id="modal-origin-link" href="#" target="_blank" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl font-bold text-xs text-center">🔗 원본 페이지 열기</a>
       </div>
     </div>
   </div>
 
   <script>
-    // 로컬 파일(content://)에서도 에러가 나지 않도록 안전한 스토리지 래퍼 사용
-    const safeStorage = {
-      get: (k, fallback) => { try { const v = localStorage.getItem(k); return v !== null ? v : fallback; } catch (e) { return fallback; } },
-      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
-      remove: (k) => { try { localStorage.removeItem(k); } catch (e) {} }
-    };
-
-    let baseUrl = safeStorage.get('pjav_base_url', 'https://projectjav.com');
-    let proxyMode = safeStorage.get('pjav_proxy_mode', 'auto');
-    let useImgProxy = safeStorage.get('pjav_img_proxy', 'true') !== 'false';
-    let currentPage = 1;
+    let allItems = [];
+    let savedItems = JSON.parse(localStorage.getItem('pjav_saved_items') || '[]');
     let currentView = 'list';
     let currentDateFilter = 'ALL';
-    let allItems = [];
-    let savedItems = JSON.parse(safeStorage.get('pjav_saved_items', '[]'));
-    let detailCache = JSON.parse(safeStorage.get('pjav_detail_cache', '{}'));
 
-    document.getElementById('input-base-url').value = baseUrl;
-    document.getElementById('input-proxy-mode').value = proxyMode;
-    document.getElementById('input-img-proxy').checked = useImgProxy;
-
-    function resolveUrl(raw) {
-      if (!raw) return '';
-      let u = raw.trim();
-      if (u.startsWith('data:') || u.startsWith('magnet:')) return u;
-      if (u.startsWith('//')) return 'https:' + u;
-      if (u.startsWith('/')) return baseUrl.replace(/\/$/, '') + u;
-      if (!u.startsWith('http')) return baseUrl.replace(/\/$/, '') + '/' + u;
-      return u;
+    function getSafeImageUrl(url) {
+      if (!url) return '';
+      return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=640&output=webp`;
     }
 
-    function getSafeImageUrl(rawUrl) {
-      const full = resolveUrl(rawUrl);
-      if (!full || full.startsWith('data:')) return '';
-      if (useImgProxy) {
-        return `https://wsrv.nl/?url=${encodeURIComponent(full)}&w=640&output=webp`;
-      }
-      return full;
-    }
-
-    window.handleImgError = function(imgEl, originalUrl) {
-      if (!imgEl.dataset.retried && originalUrl) {
-        imgEl.dataset.retried = 'true';
-        imgEl.src = `https://wsrv.nl/?url=${encodeURIComponent(originalUrl)}`;
-      } else {
-        imgEl.style.display = 'none';
-      }
-    };
-
-    function extractBestImageFromNode(node) {
-      if (!node) return '';
-      const imgs = Array.from(node.querySelectorAll('img'));
-      for (const img of imgs) {
-        const candidates = [
-          img.getAttribute('data-src'),
-          img.getAttribute('data-original'),
-          img.getAttribute('data-lazy-src'),
-          img.getAttribute('data-lazyload'),
-          img.getAttribute('data-cfsrc'),
-          img.getAttribute('srcset')?.split(',')[0]?.trim()?.split(' ')[0],
-          img.getAttribute('src')
-        ];
-        for (const c of candidates) {
-          if (c && !c.startsWith('data:image/svg') && !c.includes('blank.gif') && !c.includes('placeholder') && !c.includes('logo')) {
-            return resolveUrl(c);
-          }
-        }
-      }
-      const styled = node.querySelector('[style*="background-image"]') || (node.getAttribute?.('style')?.includes('background-image') ? node : null);
-      if (styled) {
-        const styleStr = styled.getAttribute('style') || '';
-        const match = styleStr.match(/url\(['"]?([^'")]+)['"]?\)/i);
-        if (match && match[1]) return resolveUrl(match[1]);
-      }
-      return '';
-    }
-
-    // 4중 우회 프록시 (JSON 래핑 프록시 포함하여 차단율 최소화)
-    async function fetchHtmlWithFallback(targetUrl) {
-      const encoded = encodeURIComponent(targetUrl);
-      const proxies = [
-        {
-          name: 'allorigins_json',
-          run: async (sig) => {
-            const r = await fetch(`https://api.allorigins.win/get?url=${encoded}`, { signal: sig });
-            const j = await r.json();
-            return j.contents || '';
-          }
-        },
-        {
-          name: 'codetabs',
-          run: async (sig) => {
-            const r = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encoded}`, { signal: sig });
-            return await r.text();
-          }
-        },
-        {
-          name: 'corsproxy',
-          run: async (sig) => {
-            const r = await fetch(`https://corsproxy.io/?${encoded}`, { signal: sig });
-            return await r.text();
-          }
-        },
-        {
-          name: 'allorigins_raw',
-          run: async (sig) => {
-            const r = await fetch(`https://api.allorigins.win/raw?url=${encoded}`, { signal: sig });
-            return await r.text();
-          }
-        }
-      ];
-
-      const tryProxy = async (p) => {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 10000);
-        try {
-          const text = await p.run(controller.signal);
-          clearTimeout(timer);
-          if (!text || text.length < 200 || text.includes('Just a moment...')) {
-            throw new Error('Blocked');
-          }
-          return { text, proxyName: p.name };
-        } catch (err) {
-          clearTimeout(timer);
-          throw err;
-        }
-      };
-
-      if (proxyMode !== 'auto') {
-        const chosen = proxies.find(p => p.name === proxyMode) || proxies[0];
-        const res = await tryProxy(chosen);
-        document.getElementById('status-text').textContent = `⚡ 연결 완료 (${res.proxyName})`;
-        return res.text;
-      }
-
+    async function loadDataJson() {
       try {
-        const fastest = await Promise.any(proxies.map(tryProxy));
-        document.getElementById('status-text').textContent = `⚡ 실시간 동기화 (${fastest.proxyName} · ${new Date().toLocaleTimeString()})`;
-        return fastest.text;
-      } catch (e) {
-        throw new Error('외부 사이트 응답 지연 또는 파일 직접 실행(content://) 차단');
-      }
-    }
-
-    async function fetchBoardData(isManual = false) {
-      const loadingBox = document.getElementById('loading-box');
-      const refreshIcon = document.getElementById('refresh-icon');
-      const cacheKey = `pjav_cache_v3_page_${currentPage}`;
-      const cachedRaw = safeStorage.get(cacheKey, null);
-
-      if (cachedRaw && !isManual) {
-        try {
-          allItems = JSON.parse(cachedRaw);
-          renderDateTabs();
-          renderItems();
-          document.getElementById('status-text').textContent = `⚡ 캐시 목록 즉시 로드됨 (백그라운드 갱신 중...)`;
-        } catch (e) {}
-      } else {
-        loadingBox.classList.remove('hidden');
-      }
-
-      refreshIcon.classList.add('animate-spin');
-
-      try {
-        const pageUrl = currentPage === 1 ? baseUrl : `${baseUrl}/?page=${currentPage}`;
-        const html = await fetchHtmlWithFallback(pageUrl);
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-
-        const parsedItems = [];
-        const seenLinks = new Set();
-        const dateRegex = /(20\d{2}[-./]\d{1,2}[-./]\d{1,2})|(\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+20\d{2}\b)|(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*20\d{2}\b)|(\b\d{2}[-./]\d{2}\b)/i;
-
-        const containers = doc.querySelectorAll('article, .card, .post, .item, .movie-item, .video-item, .col-md-3, .col-sm-6, tr, li');
-
-        containers.forEach((el) => {
-          const links = Array.from(el.querySelectorAll('a[href]'));
-          if (links.length === 0) return;
-
-          const mainLink = links.find(a => {
-            const href = a.getAttribute('href') || '';
-            const txt = (a.textContent || a.getAttribute('title') || '').trim();
-            return txt.length >= 3 && !href.startsWith('javascript') && !href.startsWith('#') && !href.startsWith('magnet:');
-          }) || links[0];
-
-          const rawHref = mainLink.getAttribute('href') || '';
-          if (!rawHref || rawHref.startsWith('#') || rawHref.startsWith('javascript')) return;
-
-          const fullUrl = resolveUrl(rawHref);
-          if (seenLinks.has(fullUrl) || fullUrl === baseUrl || fullUrl === baseUrl + '/') return;
-
-          let title = (mainLink.textContent || mainLink.getAttribute('title') || '').trim().replace(/\s+/g, ' ');
-          if (title.length < 3) {
-            const imgAlt = el.querySelector('img')?.getAttribute('alt') || '';
-            title = imgAlt.trim() || fullUrl.split('/').filter(Boolean).pop();
-          }
-          if (!title || title.length < 2) return;
-
-          const blockText = el.textContent || '';
-          const dateMatch = blockText.match(dateRegex);
-          const dateStr = dateMatch ? dateMatch[0] : '최근 업데이트';
-
-          let thumb = extractBestImageFromNode(el);
-          if (!thumb && el.parentElement) {
-            thumb = extractBestImageFromNode(el.parentElement);
-          }
-
-          const directDownloads = [];
-          links.forEach(a => {
-            const h = a.getAttribute('href') || '';
-            const t = a.textContent.trim() || '첨부파일';
-            if (h.startsWith('magnet:') || /\.(torrent|zip|rar|7z|mp4|mkv|srt|ass)(\?|$)/i.test(h) || /download|dl|torrent|magnet/i.test(h)) {
-              directDownloads.push({ label: t || '다운로드', url: resolveUrl(h) });
-            }
-          });
-
-          seenLinks.add(fullUrl);
-          parsedItems.push({
-            id: btoa(encodeURIComponent(fullUrl)).slice(0, 16),
-            title,
-            url: fullUrl,
-            date: dateStr,
-            thumb: thumb || (detailCache[fullUrl]?.images?.[0] || ''),
-            directDownloads
-          });
-        });
-
-        if (parsedItems.length > 0) {
-          allItems = parsedItems;
-          safeStorage.set(cacheKey, JSON.stringify(allItems));
-          renderDateTabs();
-          renderItems();
-          prefetchMissingThumbnails();
-        }
+        const res = await fetch(`./data.json?t=${Date.now()}`);
+        if (!res.ok) throw new Error('아직 data.json 파일이 생성되지 않았습니다.');
+        const data = await res.json();
+        allItems = data.items || [];
+        document.getElementById('status-text').textContent = `⚡ 최근 수집: ${data.updatedAt || '방금 전'} (${allItems.length}건)`;
+        renderDateTabs();
+        renderItems();
       } catch (err) {
-        if (allItems.length === 0) {
-          const isContentUrl = location.protocol === 'content:' || location.protocol === 'file:';
-          document.getElementById('items-container').innerHTML = `
-            <div class="bg-rose-950/60 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200 space-y-2">
-              <p class="font-extrabold text-sm">⚠️ 데이터를 불러오지 못했습니다</p>
-              <p class="text-rose-300 leading-relaxed">
-                ${isContentUrl
-                  ? '현재 스마트폰의 내 파일(content://)에서 직접 열려 있어 브라우저 보안 정책으로 외부 통신이 차단되었습니다. GitHub Pages 주소(https://...)로 접속하시면 정상 작동합니다.'
-                  : '우측 상단 [🔄 새로고침]을 다시 누르거나 [⚙️ 설정]에서 다른 프록시를 선택해 보세요.'}
-              </p>
-            </div>
-          `;
-        }
-      } finally {
-        loadingBox.classList.add('hidden');
-        refreshIcon.classList.remove('animate-spin');
-      }
-    }
-
-    async function prefetchMissingThumbnails() {
-      const missing = allItems.filter(i => !i.thumb).slice(0, 6);
-      for (const item of missing) {
-        try {
-          if (detailCache[item.url]?.images?.length > 0) {
-            item.thumb = detailCache[item.url].images[0];
-            renderItems();
-            continue;
-          }
-          const html = await fetchHtmlWithFallback(item.url);
-          const doc = new DOMParser().parseFromString(html, 'text/html');
-          const ogImg = doc.querySelector('meta[property="og:image"]')?.getAttribute('content')
-                     || doc.querySelector('meta[name="twitter:image"]')?.getAttribute('content');
-          const bodyImg = ogImg ? resolveUrl(ogImg) : extractBestImageFromNode(doc.body);
-          if (bodyImg) {
-            item.thumb = bodyImg;
-            safeStorage.set(`pjav_cache_v3_page_${currentPage}`, JSON.stringify(allItems));
-            renderItems();
-          }
-        } catch (e) {}
+        document.getElementById('status-text').textContent = '수집 대기 중';
+        document.getElementById('items-container').innerHTML = `
+          <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 text-xs text-slate-300 space-y-2 leading-relaxed">
+            <p class="font-extrabold text-sm text-indigo-400">🤖 GitHub Actions 첫 데이터 수집 중입니다!</p>
+            <p>GitHub 저장소 상단의 <strong>[Actions]</strong> 탭에서 초록색 체크(완료)가 뜬 뒤 <strong>[🔄 목록 갱신]</strong>을 누르면 0.1초 만에 전체 목록과 이미지가 표시됩니다.</p>
+          </div>
+        `;
       }
     }
 
     function renderDateTabs() {
       const dates = ['ALL', ...new Set(allItems.map(i => i.date))];
-      const tabBox = document.getElementById('date-tabs');
-      tabBox.innerHTML = dates.map(d => {
+      document.getElementById('date-tabs').innerHTML = dates.map(d => {
         const active = currentDateFilter === d;
         const label = d === 'ALL' ? `전체 (${allItems.length})` : d;
         return `<button onclick="setDateFilter('${d}')" class="px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition ${active ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-400 border border-slate-700'}">${label}</button>`;
@@ -456,11 +146,11 @@
     function renderItems() {
       const container = document.getElementById('items-container');
       const query = (document.getElementById('search-input').value || '').trim().toLowerCase();
-      const sourceList = currentView === 'saved' ? savedItems : allItems;
+      const source = currentView === 'saved' ? savedItems : allItems;
 
-      const filtered = sourceList.filter(item => {
-        const matchDate = currentView === 'saved' || currentDateFilter === 'ALL' || item.date === currentDateFilter;
-        const matchQuery = !query || item.title.toLowerCase().includes(query) || item.date.toLowerCase().includes(query);
+      const filtered = source.filter(i => {
+        const matchDate = currentView === 'saved' || currentDateFilter === 'ALL' || i.date === currentDateFilter;
+        const matchQuery = !query || i.title.toLowerCase().includes(query) || i.date.toLowerCase().includes(query);
         return matchDate && matchQuery;
       });
 
@@ -471,40 +161,35 @@
 
       const grouped = {};
       filtered.forEach(item => {
-        const key = item.date || '기타 일자';
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(item);
+        const k = item.date || '최근 업데이트';
+        if (!grouped[k]) grouped[k] = [];
+        grouped[k].push(item);
       });
 
-      container.innerHTML = Object.entries(grouped).map(([dateKey, items]) => `
+      container.innerHTML = Object.entries(grouped).map(([dateKey, list]) => `
         <div class="space-y-3">
           <div class="flex items-center justify-between px-1">
             <h2 class="text-xs font-extrabold text-indigo-400">📅 ${dateKey}</h2>
-            <span class="text-[11px] text-slate-500 font-bold">${items.length}건</span>
+            <span class="text-[11px] text-slate-500 font-bold">${list.length}건</span>
           </div>
           <div class="space-y-3">
-            ${items.map(item => {
-              const safeThumb = item.thumb ? getSafeImageUrl(item.thumb) : '';
-              const origThumb = item.thumb || '';
-              const itemIndex = allItems.findIndex(x => x.url === item.url);
+            ${list.map(item => {
+              const safeImg = getSafeImageUrl(item.thumb);
+              const fileCount = (item.files || []).length;
               return `
-                <div onclick="openItemByUrl('${encodeURIComponent(item.url)}')" class="bg-slate-800 hover:bg-slate-750 border border-slate-700/80 rounded-2xl overflow-hidden cursor-pointer active:scale-[0.99] transition shadow-md">
-                  ${safeThumb ? `
-                    <div class="w-full h-44 bg-slate-950 relative overflow-hidden flex items-center justify-center">
-                      <img src="${safeThumb}" referrerpolicy="no-referrer" loading="lazy" onerror="handleImgError(this, '${origThumb.replace(/'/g, "\\'")}')" class="w-full h-full object-cover">
-                      <span class="absolute top-2 left-2 bg-black/70 backdrop-blur text-[10px] text-indigo-300 font-bold px-2 py-0.5 rounded-md">${item.date}</span>
+                <div onclick="openDetail('${encodeURIComponent(item.url)}')" class="bg-slate-800 border border-slate-700/80 rounded-2xl overflow-hidden cursor-pointer active:scale-[0.99] transition shadow-md">
+                  ${safeImg ? `
+                    <div class="w-full h-44 bg-slate-950 relative">
+                      <img src="${safeImg}" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentElement.style.display='none'" class="w-full h-full object-cover">
+                      <span class="absolute top-2 left-2 bg-black/70 text-[10px] text-indigo-300 font-bold px-2 py-0.5 rounded">${item.date}</span>
                     </div>
                   ` : ''}
                   <div class="p-3.5 flex items-center justify-between space-x-2">
                     <div class="overflow-hidden">
                       <h3 class="font-bold text-sm text-slate-100 leading-snug line-clamp-2">${item.title}</h3>
-                      <div class="flex items-center space-x-2 mt-1.5">
-                        ${!safeThumb ? `<span class="text-[11px] text-slate-400">${item.date}</span>` : ''}
-                        ${item.directDownloads && item.directDownloads.length > 0
-                          ? `<span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold">📥 첨부 ${item.directDownloads.length}개</span>`
-                          : `<span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-bold">터치하여 이미지·첨부 추출</span>`
-                        }
-                      </div>
+                      <span class="inline-block mt-1.5 text-[10px] px-2 py-0.5 rounded font-bold ${fileCount > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-300'}">
+                        ${fileCount > 0 ? `📥 첨부파일 ${fileCount}개 즉시 다운로드` : '🔗 상세/원본 이동'}
+                      </span>
                     </div>
                     <span class="text-slate-400 text-lg shrink-0">📥</span>
                   </div>
@@ -515,182 +200,65 @@
         </div>
       `).join('');
 
-      updateSavedBadge();
+      const badge = document.getElementById('saved-badge');
+      badge.textContent = savedItems.length;
+      badge.classList.toggle('hidden', savedItems.length === 0);
     }
 
-    function openItemByUrl(encodedUrl) {
-      const targetUrl = decodeURIComponent(encodedUrl);
-      const item = allItems.find(i => i.url === targetUrl) || savedItems.find(i => i.url === targetUrl);
-      if (item) openItemDetail(item);
-    }
-
-    async function openItemDetail(item) {
-      const modal = document.getElementById('detail-modal');
-      const attBox = document.getElementById('modal-attachments');
-      const imgBox = document.getElementById('modal-images');
-      const countLabel = document.getElementById('modal-file-count');
+    function openDetail(encodedUrl) {
+      const url = decodeURIComponent(encodedUrl);
+      const item = allItems.find(i => i.url === url) || savedItems.find(i => i.url === url);
+      if (!item) return;
 
       document.getElementById('modal-date').textContent = item.date;
       document.getElementById('modal-title').textContent = item.title;
       document.getElementById('modal-origin-link').href = item.url;
 
-      const saveBtn = document.getElementById('modal-save-btn');
-      const isSaved = savedItems.some(s => s.url === item.url);
-      saveBtn.textContent = isSaved ? '🗑️ 보관함에서 제거' : '⭐ 보관함에 저장';
-      saveBtn.onclick = () => toggleSaveItem(item);
-
-      modal.classList.remove('hidden');
-
-      if (detailCache[item.url]) {
-        renderDetailModalContent(detailCache[item.url].images, detailCache[item.url].files);
-        return;
-      }
-
-      imgBox.innerHTML = item.thumb
-        ? `<img src="${getSafeImageUrl(item.thumb)}" referrerpolicy="no-referrer" class="w-full rounded-xl object-contain max-h-64 mx-auto">`
-        : `<div class="p-4 text-center text-xs text-slate-400 animate-pulse">본문 이미지를 불러오는 중...</div>`;
-      attBox.innerHTML = `<div class="p-4 bg-slate-900 rounded-xl text-xs text-slate-400 text-center animate-pulse">상세 페이지에서 첨부파일을 추출하고 있습니다...</div>`;
-      countLabel.textContent = '탐색 중...';
-
-      try {
-        const detailHtml = await fetchHtmlWithFallback(item.url);
-        const doc = new DOMParser().parseFromString(detailHtml, 'text/html');
-
-        const images = [];
-        const seenImgs = new Set();
-        const addImg = (u) => {
-          const full = resolveUrl(u);
-          if (full && !seenImgs.has(full) && !full.includes('logo') && !full.includes('icon') && !full.includes('avatar') && !full.endsWith('.svg')) {
-            seenImgs.add(full);
-            images.push(full);
-          }
-        };
-
-        if (item.thumb) addImg(item.thumb);
-        const ogImage = doc.querySelector('meta[property="og:image"]')?.getAttribute('content');
-        if (ogImage) addImg(ogImage);
-
-        doc.querySelectorAll('img').forEach(img => {
-          const src = img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('data-lazy-src') || img.getAttribute('src');
-          if (src) addImg(src);
-        });
-
-        if (images.length > 0 && !item.thumb) {
-          item.thumb = images[0];
-          const target = allItems.find(i => i.url === item.url);
-          if (target) target.thumb = images[0];
-          safeStorage.set(`pjav_cache_v3_page_${currentPage}`, JSON.stringify(allItems));
-          renderItems();
-        }
-
-        const files = [...(item.directDownloads || [])];
-        const seenUrls = new Set(files.map(f => f.url));
-
-        doc.querySelectorAll('a[href]').forEach(a => {
-          const rawHref = a.getAttribute('href') || '';
-          const text = a.textContent.trim().replace(/\s+/g, ' ');
-          const isAttachment =
-            rawHref.startsWith('magnet:') ||
-            /\.(torrent|zip|rar|7z|mp4|mkv|avi|srt|ass|smi)(\?|$)/i.test(rawHref) ||
-            /\.(torrent|zip|rar|7z|mp4|mkv|srt|ass)/i.test(text) ||
-            /download|attachment|torrent|magnet|파일|다운/i.test(rawHref + ' ' + text + ' ' + (a.className || ''));
-
-          if (isAttachment && !rawHref.startsWith('#') && !rawHref.startsWith('javascript')) {
-            const full = resolveUrl(rawHref);
-            if (!seenUrls.has(full) && full !== item.url) {
-              seenUrls.add(full);
-              files.push({
-                label: text || (full.startsWith('magnet:') ? '마그넷(Magnet) 링크' : full.split('/').pop()),
-                url: full
-              });
-            }
-          }
-        });
-
-        const rawMagnets = detailHtml.match(/magnet:\?xt=urn:btih:[a-zA-Z0-9%&=\-._]+/g) || [];
-        rawMagnets.forEach((m, idx) => {
-          if (!seenUrls.has(m)) {
-            seenUrls.add(m);
-            files.push({ label: `마그넷 링크 #${idx + 1}`, url: m });
-          }
-        });
-
-        detailCache[item.url] = { images: images.slice(0, 10), files };
-        safeStorage.set('pjav_detail_cache', JSON.stringify(detailCache));
-
-        renderDetailModalContent(images.slice(0, 10), files);
-      } catch (e) {
-        countLabel.textContent = '오류';
-        attBox.innerHTML = `<div class="p-3 bg-rose-950/60 text-rose-200 rounded-xl text-xs">상세 페이지 로드 실패: ${e.message}</div>`;
-      }
-    }
-
-    function renderDetailModalContent(images, files) {
       const imgBox = document.getElementById('modal-images');
+      imgBox.innerHTML = item.thumb
+        ? `<img src="${getSafeImageUrl(item.thumb)}" referrerpolicy="no-referrer" class="w-full max-h-72 object-contain mx-auto">`
+        : '';
+
+      const files = item.files || [];
+      document.getElementById('modal-file-count').textContent = `${files.length}개 파일`;
       const attBox = document.getElementById('modal-attachments');
-      const countLabel = document.getElementById('modal-file-count');
 
-      if (images && images.length > 0) {
-        imgBox.innerHTML = images.map(imgUrl => `
-          <img src="${getSafeImageUrl(imgUrl)}" referrerpolicy="no-referrer" onerror="handleImgError(this, '${imgUrl.replace(/'/g, "\\'")}')" class="w-full rounded-xl object-contain max-h-72 mx-auto bg-slate-950">
-        `).join('');
-      } else {
-        imgBox.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">표시할 본문 이미지가 없습니다.</p>`;
-      }
-
-      countLabel.textContent = `총 ${files.length}개 발견`;
       if (files.length === 0) {
-        attBox.innerHTML = `
-          <div class="bg-slate-900 border border-slate-700 rounded-xl p-4 text-xs text-slate-400">
-            자동 감지된 첨부파일이 없습니다. 아래 [원본 웹페이지 열기]로 직접 확인해 보세요.
-          </div>
-        `;
+        attBox.innerHTML = `<div class="bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-400">아래 [원본 페이지 열기]에서 파일을 직접 다운로드하세요.</div>`;
       } else {
         attBox.innerHTML = files.map(f => {
-          const isMagnet = f.url.startsWith('magnet:');
+          const isMag = f.url.startsWith('magnet:');
           return `
             <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 flex items-center justify-between space-x-2">
               <div class="overflow-hidden">
-                <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${isMagnet ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">
-                  ${isMagnet ? '🧲 MAGNET' : '📄 FILE'}
-                </span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${isMag ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">${isMag ? '🧲 MAGNET' : '📄 FILE'}</span>
                 <p class="text-xs font-bold text-white truncate mt-1">${f.label}</p>
               </div>
               <div class="flex space-x-1.5 shrink-0">
-                <button onclick="copyLink('${f.url.replace(/'/g, "\\'")}')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-2 rounded-lg text-xs font-bold">복사</button>
-                <a href="${f.url}" download target="_blank" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-lg text-xs font-extrabold">다운로드</a>
+                <button onclick="navigator.clipboard.writeText('${f.url.replace(/'/g, "\\'")}'); alert('복사 완료!');" class="bg-slate-800 text-slate-200 px-2.5 py-2 rounded-lg text-xs font-bold">복사</button>
+                <a href="${f.url}" download target="_blank" class="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-extrabold">다운로드</a>
               </div>
             </div>
           `;
         }).join('');
       }
+
+      const saveBtn = document.getElementById('modal-save-btn');
+      const isSaved = savedItems.some(s => s.url === item.url);
+      saveBtn.textContent = isSaved ? '🗑️ 보관함에서 제거' : '⭐ 보관함 저장';
+      saveBtn.onclick = () => {
+        const idx = savedItems.findIndex(s => s.url === item.url);
+        if (idx >= 0) savedItems.splice(idx, 1);
+        else savedItems.unshift(item);
+        localStorage.setItem('pjav_saved_items', JSON.stringify(savedItems));
+        closeDetailModal();
+        renderItems();
+      };
+
+      document.getElementById('detail-modal').classList.remove('hidden');
     }
 
     function closeDetailModal() { document.getElementById('detail-modal').classList.add('hidden'); }
-
-    function copyLink(url) {
-      navigator.clipboard.writeText(url).then(() => alert('링크가 클립보드에 복사되었습니다!'));
-    }
-
-    function toggleSaveItem(item) {
-      const idx = savedItems.findIndex(s => s.url === item.url);
-      if (idx >= 0) savedItems.splice(idx, 1);
-      else savedItems.unshift(item);
-      safeStorage.set('pjav_saved_items', JSON.stringify(savedItems));
-      updateSavedBadge();
-      closeDetailModal();
-      renderItems();
-    }
-
-    function updateSavedBadge() {
-      const badge = document.getElementById('saved-badge');
-      if (savedItems.length > 0) {
-        badge.textContent = savedItems.length;
-        badge.classList.remove('hidden');
-      } else {
-        badge.classList.add('hidden');
-      }
-    }
 
     function switchView(v) {
       currentView = v;
@@ -699,37 +267,7 @@
       renderItems();
     }
 
-    function changePage(delta) {
-      currentPage = Math.max(1, currentPage + delta);
-      document.getElementById('page-indicator').textContent = `${currentPage}P`;
-      fetchBoardData(false);
-    }
-
-    function openDirectUrl() { window.open(baseUrl, '_blank'); }
-    function openSettings() { document.getElementById('settings-modal').classList.remove('hidden'); }
-    function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); }
-
-    function saveSettings() {
-      baseUrl = document.getElementById('input-base-url').value.trim().replace(/\/$/, '');
-      proxyMode = document.getElementById('input-proxy-mode').value;
-      useImgProxy = document.getElementById('input-img-proxy').checked;
-      safeStorage.set('pjav_base_url', baseUrl);
-      safeStorage.set('pjav_proxy_mode', proxyMode);
-      safeStorage.set('pjav_img_proxy', String(useImgProxy));
-      closeSettings();
-      fetchBoardData(true);
-    }
-
-    function clearCacheAndReload() {
-      try {
-        Object.keys(localStorage).forEach(k => {
-          if (k.startsWith('pjav_cache_') || k === 'pjav_detail_cache') localStorage.removeItem(k);
-        });
-      } catch (e) {}
-      location.reload();
-    }
-
-    fetchBoardData(false);
+    loadDataJson();
   </script>
 </body>
 </html>
