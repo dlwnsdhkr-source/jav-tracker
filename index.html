@@ -20,10 +20,14 @@
       -webkit-tap-highlight-color: transparent;
       font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
       padding-top: env(safe-area-inset-top);
-      padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+      padding-bottom: calc(5.2rem + env(safe-area-inset-bottom));
     }
     .scrollbar-none::-webkit-scrollbar { display: none; }
     .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.8);
+      cursor: pointer;
+    }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen select-none">
@@ -45,12 +49,39 @@
   </header>
 
   <!-- 메인 컨텐츠 -->
-  <main class="max-w-md mx-auto p-3.5 space-y-4">
-    <!-- 실시간 검색창 -->
-    <input type="text" id="search-input" oninput="renderItems()" placeholder="품번(예: Muka-011), 배우, 태그 검색..." class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 outline-none">
+  <main class="max-w-md mx-auto p-3.5 space-y-3.5">
 
-    <!-- 일자별 탭 필터 -->
-    <div id="date-tabs" class="flex space-x-1.5 overflow-x-auto pb-1 scrollbar-none"></div>
+    <!-- 검색창 -->
+    <div class="relative">
+      <input type="text" id="search-input" oninput="renderItems()" placeholder="품번(예: Muka-011), 배우명, 태그 검색..." class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-3.5 pr-9 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 outline-none">
+      <button onclick="clearSearch()" id="clear-search-btn" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-sm px-1">✕</button>
+    </div>
+
+    <!-- 기간(시작일 ~ 종료일) 필터 박스 -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2.5">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-extrabold text-indigo-400 flex items-center space-x-1">
+          <span>📅 업데이트 기간 필터</span>
+        </span>
+        <span id="filter-count-label" class="text-[11px] font-bold text-slate-400">전체 0건</span>
+      </div>
+
+      <!-- 시작일 ~ 종료일 달력 선택 -->
+      <div class="flex items-center space-x-1.5 text-xs">
+        <input type="date" id="start-date" onchange="onCustomDateChange()" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-slate-200 outline-none focus:border-indigo-500">
+        <span class="text-slate-500 font-bold">~</span>
+        <input type="date" id="end-date" onchange="onCustomDateChange()" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-slate-200 outline-none focus:border-indigo-500">
+      </div>
+
+      <!-- 빠른 기간 선택 버튼 -->
+      <div class="flex space-x-1.5 overflow-x-auto scrollbar-none pt-0.5">
+        <button onclick="setQuickRange('ALL')" id="range-ALL" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-indigo-600 text-white shrink-0">전체 기간</button>
+        <button onclick="setQuickRange(0)" id="range-0" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최신 당일</button>
+        <button onclick="setQuickRange(3)" id="range-3" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최근 3일</button>
+        <button onclick="setQuickRange(7)" id="range-7" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최근 7일</button>
+        <button onclick="setQuickRange(30)" id="range-30" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최근 30일</button>
+      </div>
+    </div>
 
     <!-- 작품 카드 리스트 -->
     <div id="items-container" class="space-y-6"></div>
@@ -61,7 +92,7 @@
     <div class="max-w-md mx-auto grid grid-cols-3 py-2">
       <button onclick="switchView('list')" id="nav-list" class="flex flex-col items-center text-indigo-400">
         <span class="text-lg">📅</span>
-        <span class="text-[11px] font-bold mt-0.5">일자별 작품</span>
+        <span class="text-[11px] font-bold mt-0.5">기간별 작품</span>
       </button>
       <button onclick="switchView('saved')" id="nav-saved" class="flex flex-col items-center text-slate-500 relative">
         <span class="text-lg">⭐</span>
@@ -75,16 +106,46 @@
     </div>
   </nav>
 
+  <!-- 배우 프로필 대표 이미지 모달 (배우명 터치 시 오픈) -->
+  <div id="actress-modal" onclick="if(event.target===this) closeActressModal()" class="fixed inset-0 bg-black/85 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl space-y-4 p-5">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <span class="text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded font-bold">👩 ACTRESS PROFILE</span>
+          <h3 id="actress-modal-name" class="font-extrabold text-lg text-white mt-1">배우 이름</h3>
+        </div>
+        <button onclick="closeActressModal()" class="text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
+      </div>
+
+      <!-- 배우 대표 사진 표시 영역 -->
+      <div id="actress-img-box" class="w-full h-72 bg-slate-950 rounded-2xl overflow-hidden flex flex-col items-center justify-center relative border border-slate-800">
+        <!-- 동적 렌더링 -->
+      </div>
+
+      <p id="actress-desc" class="text-xs text-slate-400 text-center leading-relaxed"></p>
+
+      <!-- 액션 버튼 -->
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button id="actress-filter-btn" class="bg-rose-600 hover:bg-rose-500 text-white py-2.5 rounded-xl font-extrabold text-xs shadow active:scale-95 transition">
+          🎬 이 배우 작품만 보기
+        </button>
+        <a id="actress-google-btn" href="#" target="_blank" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 py-2.5 rounded-xl font-bold text-xs text-center flex items-center justify-center">
+          🔍 구글 화보 검색 ↗
+        </a>
+      </div>
+    </div>
+  </div>
+
   <!-- 토스트 알림 -->
   <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg hidden z-50">
-    마그넷 주소가 복사되었습니다!
+    복사되었습니다!
   </div>
 
   <script>
     let allItems = [];
     let savedItems = JSON.parse(localStorage.getItem('pjav_saved_v2') || '[]');
+    let actressImgCache = JSON.parse(localStorage.getItem('pjav_actress_img_cache') || '{}');
     let currentView = 'list';
-    let currentDateFilter = 'ALL';
 
     function getSafeImageUrl(url) {
       if (!url) return '';
@@ -111,6 +172,160 @@
       navigator.clipboard.writeText(txt).then(() => showToast('📋 마그넷 링크가 클립보드에 복사되었습니다!'));
     }
 
+    function clearSearch() {
+      document.getElementById('search-input').value = '';
+      renderItems();
+    }
+
+    // 날짜 문자열을 비교 가능한 YYYY-MM-DD 포맷으로 정규화
+    function parseNormalizedDate(item) {
+      const raw = (item.date || item.displayDate || '').trim();
+      let m = raw.match(/^(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/);
+      if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+      m = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](20\d{2}|\d{2})/);
+      if (m) {
+        const yr = m[3].length === 2 ? '20' + m[3] : m[3];
+        return `${yr}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+      }
+      return '';
+    }
+
+    // 수집된 데이터 내 가장 최신 날짜를 기준으로 빠른 기간(오늘/3일/7일/30일) 설정
+    function setQuickRange(days) {
+      document.querySelectorAll('.range-btn').forEach(btn => {
+        btn.className = 'range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0';
+      });
+      const activeBtn = document.getElementById(`range-${days}`);
+      if (activeBtn) {
+        activeBtn.className = 'range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-indigo-600 text-white shrink-0 shadow';
+      }
+
+      const startInput = document.getElementById('start-date');
+      const endInput = document.getElementById('end-date');
+
+      if (days === 'ALL') {
+        startInput.value = '';
+        endInput.value = '';
+        renderItems();
+        return;
+      }
+
+      // 데이터의 가장 최신 일자(없으면 오늘)를 기준점으로 계산
+      const validDates = allItems.map(parseNormalizedDate).filter(Boolean).sort();
+      const maxDateStr = validDates.length > 0 ? validDates[validDates.length - 1] : new Date().toISOString().slice(0, 10);
+
+      const endDateObj = new Date(maxDateStr + 'T00:00:00');
+      const startDateObj = new Date(endDateObj);
+      startDateObj.setDate(startDateObj.getDate() - Number(days));
+
+      startInput.value = startDateObj.toISOString().slice(0, 10);
+      endInput.value = endDateObj.toISOString().slice(0, 10);
+      renderItems();
+    }
+
+    function onCustomDateChange() {
+      document.querySelectorAll('.range-btn').forEach(btn => {
+        btn.className = 'range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0';
+      });
+      renderItems();
+    }
+
+    // 배우 이름 클릭 시 온라인(Wikipedia / Wikidata / Commons) + 출연작 커버에서 대표 이미지 검색 및 표시
+    async function openActressModal(actressName) {
+      const modal = document.getElementById('actress-modal');
+      const nameEl = document.getElementById('actress-modal-name');
+      const imgBox = document.getElementById('actress-img-box');
+      const descEl = document.getElementById('actress-desc');
+      const filterBtn = document.getElementById('actress-filter-btn');
+      const googleBtn = document.getElementById('actress-google-btn');
+
+      nameEl.textContent = actressName;
+      googleBtn.href = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(actressName + ' actress')}`;
+
+      // 이 배우가 출연한 수집 목록 내 작품들 찾기
+      const relatedWorks = allItems.filter(i => (i.actress || []).some(a => a.toLowerCase() === actressName.toLowerCase()));
+      const fallbackWorkThumb = relatedWorks.find(w => w.thumb)?.thumb || '';
+
+      filterBtn.onclick = () => {
+        closeActressModal();
+        document.getElementById('search-input').value = actressName;
+        renderItems();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+
+      modal.classList.remove('hidden');
+
+      // 캐시에 이미 검색된 대표 이미지가 있으면 즉시 표시
+      if (actressImgCache[actressName]) {
+        renderActressImage(actressImgCache[actressName], fallbackWorkThumb, actressName, relatedWorks.length);
+        return;
+      }
+
+      imgBox.innerHTML = `
+        <div class="w-7 h-7 border-2 border-rose-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+        <p class="text-xs text-slate-400">'${actressName}' 대표 프로필 이미지를 검색 중...</p>
+      `;
+      descEl.textContent = `수집된 목록 내 출연작 ${relatedWorks.length}편`;
+
+      let foundImageUrl = '';
+
+      try {
+        // 1차: 영문/일문/한글 위키피디아 & 위키미디어 공용(Commons)에서 인물 대표 사진 검색
+        const wikiApis = [
+          `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(actressName)}&gsrlimit=1&prop=pageimages&piprop=original|thumbnail&pithumbsize=600&format=json&origin=*`,
+          `https://ja.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(actressName)}&gsrlimit=1&prop=pageimages&piprop=original|thumbnail&pithumbsize=600&format=json&origin=*`,
+          `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(actressName)}&gsrlimit=1&prop=imageinfo&iiprop=url&format=json&origin=*`
+        ];
+
+        for (const apiUrl of wikiApis) {
+          const r = await fetch(apiUrl);
+          const j = await r.json();
+          const pages = j?.query?.pages ? Object.values(j.query.pages) : [];
+          if (pages.length > 0) {
+            const p = pages[0];
+            const imgCandidate = p?.original?.source || p?.thumbnail?.source || p?.imageinfo?.[0]?.url || '';
+            if (imgCandidate && !imgCandidate.endsWith('.svg')) {
+              foundImageUrl = imgCandidate;
+              break;
+            }
+          }
+        }
+      } catch (e) {}
+
+      // 대표 사진을 찾았으면 캐시 저장, 못 찾았으면 최신 출연작 고화질 커버를 대표 이미지로 사용
+      const finalImg = foundImageUrl || fallbackWorkThumb;
+      if (finalImg) {
+        actressImgCache[actressName] = finalImg;
+        localStorage.setItem('pjav_actress_img_cache', JSON.stringify(actressImgCache));
+      }
+
+      renderActressImage(finalImg, fallbackWorkThumb, actressName, relatedWorks.length);
+    }
+
+    function renderActressImage(primaryImg, workCoverImg, actressName, workCount) {
+      const imgBox = document.getElementById('actress-img-box');
+      const descEl = document.getElementById('actress-desc');
+
+      if (primaryImg) {
+        const safeUrl = getSafeImageUrl(primaryImg);
+        const backupUrl = workCoverImg ? getSafeImageUrl(workCoverImg) : '';
+        imgBox.innerHTML = `
+          <img src="${safeUrl}" referrerpolicy="no-referrer" onerror="if(this.src!=='${backupUrl}' && '${backupUrl}'){this.src='${backupUrl}';}else{this.style.display='none';}" class="w-full h-full object-contain bg-black">
+        `;
+        descEl.textContent = `현재 목록에 '${actressName}' 출연작이 총 ${workCount}편 있습니다.`;
+      } else {
+        imgBox.innerHTML = `
+          <span class="text-3xl mb-2">👩</span>
+          <p class="text-xs text-slate-400">등록된 프로필 사진이 없습니다.<br>아래 [구글 화보 검색]을 눌러 확인해 보세요.</p>
+        `;
+        descEl.textContent = `현재 목록 내 출연작: ${workCount}편`;
+      }
+    }
+
+    function closeActressModal() {
+      document.getElementById('actress-modal').classList.add('hidden');
+    }
+
     async function loadDataJson() {
       try {
         const res = await fetch(`./data.json?t=${Date.now()}`);
@@ -118,33 +333,16 @@
         const data = await res.json();
         allItems = data.items || [];
         document.getElementById('status-text').textContent = `⚡ 최근 수집: ${data.updatedAt || ''} (총 ${allItems.length}작품)`;
-        renderDateTabs();
         renderItems();
       } catch (err) {
         document.getElementById('status-text').textContent = '수집 대기 중';
         document.getElementById('items-container').innerHTML = `
           <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-xs text-slate-300 space-y-2">
             <p class="font-extrabold text-sm text-indigo-400">🤖 데이터 업데이트 중입니다</p>
-            <p>GitHub 저장소의 [Actions] 탭에서 작업이 완료(초록색 체크)된 후 상단 [🔄 목록 갱신]을 눌러주세요.</p>
+            <p>GitHub 저장소의 [Actions] 탭에서 작업이 완료된 후 상단 [🔄 목록 갱신]을 눌러주세요.</p>
           </div>
         `;
       }
-    }
-
-    function renderDateTabs() {
-      const dates = ['ALL', ...new Set(allItems.map(i => i.date))];
-      document.getElementById('date-tabs').innerHTML = dates.map(d => {
-        const active = currentDateFilter === d;
-        const count = d === 'ALL' ? allItems.length : allItems.filter(x => x.date === d).length;
-        const label = d === 'ALL' ? `전체 (${count})` : `${d} (${count})`;
-        return `<button onclick="setDateFilter('${d}')" class="px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition ${active ? 'bg-indigo-600 text-white shadow' : 'bg-slate-900 text-slate-400 border border-slate-800'}">${label}</button>`;
-      }).join('');
-    }
-
-    function setDateFilter(d) {
-      currentDateFilter = d;
-      renderDateTabs();
-      renderItems();
     }
 
     function toggleSave(encodedUrl) {
@@ -165,22 +363,37 @@
 
     function renderItems() {
       const container = document.getElementById('items-container');
-      const query = (document.getElementById('search-input').value || '').trim().toLowerCase();
+      const queryInput = document.getElementById('search-input');
+      const query = (queryInput.value || '').trim().toLowerCase();
+      document.getElementById('clear-search-btn').classList.toggle('hidden', !query);
+
+      const startDate = document.getElementById('start-date').value; // YYYY-MM-DD
+      const endDate = document.getElementById('end-date').value;     // YYYY-MM-DD
+
       const source = currentView === 'saved' ? savedItems : allItems;
 
       const filtered = source.filter(i => {
-        const matchDate = currentView === 'saved' || currentDateFilter === 'ALL' || i.date === currentDateFilter;
+        // 1. 기간 필터 체크 (시작일 ~ 종료일)
+        if (currentView !== 'saved' && (startDate || endDate)) {
+          const itemDate = parseNormalizedDate(i);
+          if (itemDate) {
+            if (startDate && itemDate < startDate) return false;
+            if (endDate && itemDate > endDate) return false;
+          }
+        }
+        // 2. 검색어 필터 체크
         const hay = `${i.title} ${(i.actress || []).join(' ')} ${(i.tags || []).join(' ')} ${i.date}`.toLowerCase();
-        const matchQuery = !query || hay.includes(query);
-        return matchDate && matchQuery;
+        return !query || hay.includes(query);
       });
+
+      document.getElementById('filter-count-label').textContent = `검색 결과 ${filtered.length}건`;
 
       const badge = document.getElementById('saved-badge');
       badge.textContent = savedItems.length;
       badge.classList.toggle('hidden', savedItems.length === 0);
 
       if (filtered.length === 0) {
-        container.innerHTML = `<div class="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-xs text-slate-400">표시할 작품이 없습니다.</div>`;
+        container.innerHTML = `<div class="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-xs text-slate-400">선택한 기간이나 검색어에 해당하는 작품이 없습니다.</div>`;
         return;
       }
 
@@ -189,17 +402,18 @@
         const origImg = (item.thumb || '').replace(/'/g, "\\'");
         const isSaved = savedItems.some(s => s.url === item.url);
         const torrents = item.torrents || [];
+        const normDate = parseNormalizedDate(item) || item.displayDate || item.date;
 
         return `
           <article class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
-            <!-- 1. 상단 커버 이미지 (원본 비율 유지) -->
+            <!-- 1. 상단 커버 이미지 -->
             ${safeImg ? `
               <div class="w-full bg-black relative">
                 <img src="${safeImg}" referrerpolicy="no-referrer" loading="lazy" onerror="handleImgError(this, '${origImg}')" class="w-full max-h-96 object-contain mx-auto">
               </div>
             ` : ''}
 
-            <!-- 2. 작품명, 날짜, 배우, 태그 영역 -->
+            <!-- 2. 작품명, 날짜, 배우(터치 시 대표 이미지 팝업), 태그 영역 -->
             <div class="p-4 space-y-2.5">
               <div class="flex items-start justify-between gap-2">
                 <a href="${item.url}" target="_blank" class="font-extrabold text-base text-white hover:text-indigo-400 leading-snug break-words">
@@ -211,24 +425,32 @@
               </div>
 
               <div class="flex items-center space-x-2 text-xs text-slate-400">
-                <span class="font-bold text-indigo-400">📅 ${item.displayDate || item.date}</span>
+                <span class="font-bold text-indigo-400">📅 ${normDate}</span>
                 <span>·</span>
                 <a href="${item.url}" target="_blank" class="underline hover:text-slate-200">원본 보기 ↗</a>
               </div>
 
-              <!-- 배우 및 태그 배지 -->
+              <!-- 배우(클릭 시 프로필 사진 모달 오픈) 및 태그 배지 -->
               ${(item.actress?.length || item.tags?.length) ? `
                 <div class="flex flex-wrap gap-1.5 pt-0.5">
-                  ${(item.actress || []).map(a => `<span class="text-[11px] bg-rose-500/20 border border-rose-500/30 text-rose-300 px-2 py-0.5 rounded font-bold">👩 ${a}</span>`).join('')}
-                  ${(item.tags || []).map(t => `<span class="text-[11px] bg-slate-800 border border-slate-700 text-slate-300 px-2 py-0.5 rounded">${t}</span>`).join('')}
+                  ${(item.actress || []).map(a => `
+                    <button onclick="openActressModal('${a.replace(/'/g, "\\'")}')" class="text-[11px] bg-rose-500/20 hover:bg-rose-500/30 active:scale-95 border border-rose-500/40 text-rose-300 px-2.5 py-1 rounded-lg font-extrabold flex items-center space-x-1 transition shadow-sm">
+                      <span>👩 ${a}</span>
+                      <span class="text-[9px] text-rose-400">🔍사진</span>
+                    </button>
+                  `).join('')}
+                  ${(item.tags || []).map(t => `
+                    <button onclick="document.getElementById('search-input').value='${t.replace(/'/g, "\\'")}'; renderItems();" class="text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-2 py-1 rounded-lg">
+                      ${t}
+                    </button>
+                  `).join('')}
                 </div>
               ` : ''}
 
-              <!-- 3. 하단 토렌트 Download & Magnet 목록 (원본 사이트처럼 한 카드 아래에 바로 나열) -->
+              <!-- 3. 하단 토렌트 Download & Magnet 목록 -->
               <div class="pt-2 border-t border-slate-800/80 space-y-2">
                 ${torrents.length > 0 ? torrents.map(t => `
                   <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
-                    <!-- 좌측: Download & Magnet 버튼 -->
                     <div class="flex items-center space-x-1.5 shrink-0">
                       ${t.downloadUrl ? `
                         <a href="${t.downloadUrl}" target="_blank" download class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1 transition">
@@ -239,13 +461,12 @@
                         <a href="${t.magnetUrl}" class="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1 transition">
                           <span>🧲</span><span>Magnet</span>
                         </a>
-                        <button onclick="copyText('${t.magnetUrl.replace(/'/g, "\\'")}')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold px-2 py-1.5 rounded-lg" title="마그넷 복사">
+                        <button onclick="copyText('${t.magnetUrl.replace(/'/g, "\\'")}')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold px-2 py-1.5 rounded-lg">
                           복사
                         </button>
                       ` : ''}
                     </div>
 
-                    <!-- 우측: 용량(GB) · 시드(S/L) · 등록일 -->
                     <div class="text-right text-[11px] leading-tight">
                       <div class="font-extrabold text-emerald-400">${t.size || ''}</div>
                       <div class="text-slate-400">
