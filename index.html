@@ -39,7 +39,7 @@
         <span class="text-xl">⚡</span>
         <div>
           <h1 class="font-extrabold text-base text-white leading-tight">ProjectJAV 업데이터</h1>
-          <p id="status-text" class="text-[11px] text-slate-400">데이터 불러오는 중...</p>
+          <p id="status-text" class="text-[11px] text-amber-400">앱 초기화 중...</p>
         </div>
       </div>
       <button onclick="loadDataJson()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow active:scale-95 transition">
@@ -49,4 +49,477 @@
   </header>
 
   <!-- 메인 컨텐츠 -->
-  <main class="max-w
+  <main class="max-w-md mx-auto p-3.5 space-y-3.5">
+
+    <!-- 검색창 -->
+    <div class="relative">
+      <input type="text" id="search-input" oninput="renderItems()" placeholder="품번(예: Muka-011), 배우명, 태그 검색..." class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-3.5 pr-9 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 outline-none">
+      <button onclick="clearSearch()" id="clear-search-btn" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-sm px-1">✕</button>
+    </div>
+
+    <!-- 기간(시작일 ~ 종료일) 필터 박스 -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2.5">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-extrabold text-indigo-400">📅 업데이트 기간 필터</span>
+        <span id="filter-count-label" class="text-[11px] font-bold text-slate-400">대기 중</span>
+      </div>
+
+      <div class="flex items-center space-x-1.5 text-xs">
+        <input type="date" id="start-date" onchange="onCustomDateChange()" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-slate-200 outline-none">
+        <span class="text-slate-500 font-bold">~</span>
+        <input type="date" id="end-date" onchange="onCustomDateChange()" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-2 text-slate-200 outline-none">
+      </div>
+
+      <div class="flex space-x-1.5 overflow-x-auto scrollbar-none pt-0.5">
+        <button onclick="setQuickRange('ALL')" id="range-ALL" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-indigo-600 text-white shrink-0">전체 기간</button>
+        <button onclick="setQuickRange(0)" id="range-0" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최신 당일</button>
+        <button onclick="setQuickRange(3)" id="range-3" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최근 3일</button>
+        <button onclick="setQuickRange(7)" id="range-7" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최근 7일</button>
+        <button onclick="setQuickRange(30)" id="range-30" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최근 30일</button>
+      </div>
+    </div>
+
+    <!-- 작품 카드 리스트 -->
+    <div id="items-container" class="space-y-6">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-400">
+        데이터 파일을 확인하고 있습니다...
+      </div>
+    </div>
+  </main>
+
+  <!-- 하단 네비게이션 -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-800 z-30" style="padding-bottom: env(safe-area-inset-bottom);">
+    <div class="max-w-md mx-auto grid grid-cols-3 py-2">
+      <button onclick="switchView('list')" id="nav-list" class="flex flex-col items-center text-indigo-400">
+        <span class="text-lg">📅</span>
+        <span class="text-[11px] font-bold mt-0.5">기간별 작품</span>
+      </button>
+      <button onclick="switchView('saved')" id="nav-saved" class="flex flex-col items-center text-slate-500 relative">
+        <span class="text-lg">⭐</span>
+        <span class="text-[11px] font-bold mt-0.5">보관함</span>
+        <span id="saved-badge" class="hidden absolute top-0 right-8 bg-rose-500 text-white text-[10px] font-extrabold w-4 h-4 rounded-full flex items-center justify-center">0</span>
+      </button>
+      <a href="https://projectjav.com" target="_blank" class="flex flex-col items-center text-slate-500">
+        <span class="text-lg">🌐</span>
+        <span class="text-[11px] font-bold mt-0.5">원본 사이트</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- 배우 프로필 대표 이미지 모달 -->
+  <div id="actress-modal" onclick="if(event.target===this) closeActressModal()" class="fixed inset-0 bg-black/85 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl space-y-4 p-5">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <span class="text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded font-bold">👩 ACTRESS PROFILE</span>
+          <h3 id="actress-modal-name" class="font-extrabold text-lg text-white mt-1">배우 이름</h3>
+        </div>
+        <button onclick="closeActressModal()" class="text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
+      </div>
+      <div id="actress-img-box" class="w-full h-72 bg-slate-950 rounded-2xl overflow-hidden flex flex-col items-center justify-center relative border border-slate-800"></div>
+      <p id="actress-desc" class="text-xs text-slate-400 text-center leading-relaxed"></p>
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button id="actress-filter-btn" class="bg-rose-600 hover:bg-rose-500 text-white py-2.5 rounded-xl font-extrabold text-xs shadow active:scale-95 transition">
+          🎬 이 배우 작품만 보기
+        </button>
+        <a id="actress-google-btn" href="#" target="_blank" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 py-2.5 rounded-xl font-bold text-xs text-center flex items-center justify-center">
+          🔍 구글 화보 검색 ↗
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 알림 -->
+  <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg hidden z-50">
+    복사되었습니다!
+  </div>
+
+  <script>
+    // 전역 에러 발생 시 멈추지 않고 화면에 즉시 원인 표시
+    window.onerror = function(msg, url, line) {
+      const st = document.getElementById('status-text');
+      if (st) st.textContent = '⚠️ 스크립트 오류 발생 (라인 ' + line + ')';
+    };
+
+    const safeStore = {
+      get: (k, def) => { try { return JSON.parse(localStorage.getItem(k)) || def; } catch(e) { return def; } },
+      set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} }
+    };
+
+    let allItems = [];
+    let savedItems = safeStore.get('pjav_saved_v2', []);
+    let actressImgCache = safeStore.get('pjav_actress_img_cache', {});
+    let currentView = 'list';
+
+    function getSafeImageUrl(url) {
+      if (!url) return '';
+      return 'https://wsrv.nl/?url=' + encodeURIComponent(url) + '&w=800&output=webp';
+    }
+
+    window.handleImgError = function(imgEl, origUrl) {
+      if (!imgEl.dataset.fallback && origUrl) {
+        imgEl.dataset.fallback = '1';
+        imgEl.src = origUrl;
+      } else if (imgEl.parentElement) {
+        imgEl.parentElement.style.display = 'none';
+      }
+    };
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 2000);
+    }
+
+    function copyText(txt) {
+      navigator.clipboard.writeText(txt).then(() => showToast('📋 마그넷 링크가 복사되었습니다!'));
+    }
+
+    function clearSearch() {
+      document.getElementById('search-input').value = '';
+      renderItems();
+    }
+
+    function parseNormalizedDate(item) {
+      const raw = String(item.date || item.displayDate || '').trim();
+      let m = raw.match(/^(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/);
+      if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+      m = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](20\d{2}|\d{2})/);
+      if (m) {
+        const yr = m[3].length === 2 ? '20' + m[3] : m[3];
+        return yr + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+      }
+      return '';
+    }
+
+    function setQuickRange(days) {
+      document.querySelectorAll('.range-btn').forEach(btn => {
+        btn.className = 'range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0';
+      });
+      const activeBtn = document.getElementById('range-' + days);
+      if (activeBtn) {
+        activeBtn.className = 'range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-indigo-600 text-white shrink-0 shadow';
+      }
+
+      const startInput = document.getElementById('start-date');
+      const endInput = document.getElementById('end-date');
+
+      if (days === 'ALL') {
+        startInput.value = '';
+        endInput.value = '';
+        renderItems();
+        return;
+      }
+
+      const validDates = allItems.map(parseNormalizedDate).filter(Boolean).sort();
+      const maxDateStr = validDates.length > 0 ? validDates[validDates.length - 1] : new Date().toISOString().slice(0, 10);
+
+      const endDateObj = new Date(maxDateStr + 'T00:00:00');
+      const startDateObj = new Date(endDateObj);
+      startDateObj.setDate(startDateObj.getDate() - Number(days));
+
+      startInput.value = startDateObj.toISOString().slice(0, 10);
+      endInput.value = endDateObj.toISOString().slice(0, 10);
+      renderItems();
+    }
+
+    function onCustomDateChange() {
+      document.querySelectorAll('.range-btn').forEach(btn => {
+        btn.className = 'range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0';
+      });
+      renderItems();
+    }
+
+    // 데이터 불러오기 (현재 경로 + GitHub Raw 경로 다중 시도)
+    async function loadDataJson() {
+      const statusEl = document.getElementById('status-text');
+      const container = document.getElementById('items-container');
+      statusEl.textContent = '🔄 data.json 불러오는 중...';
+
+      const urlsToTry = [
+        './data.json?t=' + Date.now(),
+        'https://raw.githubusercontent.com/dlwnsdhkr-source/jav-tracker/main/data.json?t=' + Date.now(),
+        'https://raw.githubusercontent.com/dlwnsdhkr-source/jav-updater/main/data.json?t=' + Date.now()
+      ];
+
+      let loadedData = null;
+      let lastError = '';
+
+      for (const u of urlsToTry) {
+        try {
+          const res = await fetch(u, { cache: 'no-store' });
+          if (res.ok) {
+            loadedData = await res.json();
+            if (loadedData && Array.isArray(loadedData.items)) break;
+          } else {
+            lastError = 'HTTP ' + res.status;
+          }
+        } catch (err) {
+          lastError = err.message;
+        }
+      }
+
+      if (!loadedData || !Array.isArray(loadedData.items)) {
+        statusEl.textContent = '⚠️ data.json 파일 없음 (' + lastError + ')';
+        container.innerHTML = `
+          <div class="bg-rose-950/60 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200 space-y-2.5 leading-relaxed">
+            <p class="font-extrabold text-sm text-rose-300">⚠️ 아직 저장소에 data.json 파일이 없거나 비어 있습니다!</p>
+            <p>1. GitHub 저장소 상단 <strong>[Actions]</strong> 탭을 눌러 최근 실행된 작업이 <strong>초록색 체크(✅)</strong>로 끝났는지 확인해 주세요.</p>
+            <p>2. 만약 빨간색 <strong>X(실패)</strong>가 떠 있다면, <strong>.github/workflows/update.yml</strong> 파일 맨 아래 <code>git push</code> 윗줄에 <code>git pull --rebase origin main</code>을 넣고 다시 실행해 주세요.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // 구버전(files 배열)과 신버전(torrents 배열) 데이터 모두 호환 변환
+      allItems = loadedData.items.filter(i => i && i.title && i.title.toLowerCase() !== 'download').map(item => {
+        let torrents = Array.isArray(item.torrents) ? item.torrents : [];
+        if (torrents.length === 0 && Array.isArray(item.files) && item.files.length > 0) {
+          item.files.forEach(f => {
+            if (f.url && f.url.startsWith('magnet:')) {
+              torrents.push({ size: f.label || '마그넷', seeds: '', leeches: '', date: '', downloadUrl: '', magnetUrl: f.url });
+            } else if (f.url) {
+              torrents.push({ size: f.label || '토렌트', seeds: '', leeches: '', date: '', downloadUrl: f.url, magnetUrl: '' });
+            }
+          });
+        }
+        return {
+          title: item.title || '제목 없음',
+          url: item.url || '#',
+          date: item.date || '',
+          displayDate: item.displayDate || item.date || '',
+          thumb: item.thumb || '',
+          actress: Array.isArray(item.actress) ? item.actress : [],
+          tags: Array.isArray(item.tags) ? item.tags : [],
+          torrents: torrents
+        };
+      });
+
+      statusEl.textContent = '⚡ 최근 수집: ' + (loadedData.updatedAt || '완료') + ' (' + allItems.length + '작품)';
+      statusEl.className = 'text-[11px] text-emerald-400 font-bold';
+      renderItems();
+    }
+
+    async function openActressModal(actressName) {
+      const modal = document.getElementById('actress-modal');
+      const nameEl = document.getElementById('actress-modal-name');
+      const imgBox = document.getElementById('actress-img-box');
+      const descEl = document.getElementById('actress-desc');
+      const filterBtn = document.getElementById('actress-filter-btn');
+      const googleBtn = document.getElementById('actress-google-btn');
+
+      nameEl.textContent = actressName;
+      googleBtn.href = 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(actressName + ' actress');
+
+      const relatedWorks = allItems.filter(i => (i.actress || []).some(a => a.toLowerCase() === actressName.toLowerCase()));
+      const fallbackWorkThumb = (relatedWorks.find(w => w.thumb) || {}).thumb || '';
+
+      filterBtn.onclick = () => {
+        closeActressModal();
+        document.getElementById('search-input').value = actressName;
+        renderItems();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+
+      modal.classList.remove('hidden');
+
+      if (actressImgCache[actressName]) {
+        renderActressImage(actressImgCache[actressName], fallbackWorkThumb, actressName, relatedWorks.length);
+        return;
+      }
+
+      imgBox.innerHTML = '<div class="w-7 h-7 border-2 border-rose-500 border-t-transparent rounded-full animate-spin mb-2"></div><p class="text-xs text-slate-400">대표 프로필 이미지를 검색 중...</p>';
+      descEl.textContent = '수집된 목록 내 출연작 ' + relatedWorks.length + '편';
+
+      let foundImageUrl = '';
+      try {
+        const wikiApis = [
+          'https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=' + encodeURIComponent(actressName) + '&gsrlimit=1&prop=pageimages&piprop=original|thumbnail&pithumbsize=600&format=json&origin=*',
+          'https://ja.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=' + encodeURIComponent(actressName) + '&gsrlimit=1&prop=pageimages&piprop=original|thumbnail&pithumbsize=600&format=json&origin=*'
+        ];
+        for (const apiUrl of wikiApis) {
+          const r = await fetch(apiUrl);
+          const j = await r.json();
+          const pages = j && j.query && j.query.pages ? Object.values(j.query.pages) : [];
+          if (pages.length > 0) {
+            const p = pages[0];
+            const imgCandidate = (p.original && p.original.source) || (p.thumbnail && p.thumbnail.source) || '';
+            if (imgCandidate && !imgCandidate.endsWith('.svg')) {
+              foundImageUrl = imgCandidate;
+              break;
+            }
+          }
+        }
+      } catch (e) {}
+
+      const finalImg = foundImageUrl || fallbackWorkThumb;
+      if (finalImg) {
+        actressImgCache[actressName] = finalImg;
+        safeStore.set('pjav_actress_img_cache', actressImgCache);
+      }
+      renderActressImage(finalImg, fallbackWorkThumb, actressName, relatedWorks.length);
+    }
+
+    function renderActressImage(primaryImg, workCoverImg, actressName, workCount) {
+      const imgBox = document.getElementById('actress-img-box');
+      const descEl = document.getElementById('actress-desc');
+      if (primaryImg) {
+        const safeUrl = getSafeImageUrl(primaryImg);
+        imgBox.innerHTML = '<img src="' + safeUrl + '" referrerpolicy="no-referrer" class="w-full h-full object-contain bg-black">';
+        descEl.textContent = "현재 목록에 '" + actressName + "' 출연작이 총 " + workCount + "편 있습니다.";
+      } else {
+        imgBox.innerHTML = '<span class="text-3xl mb-2">👩</span><p class="text-xs text-slate-400 text-center px-4">프로필 사진이 없습니다.<br>아래 [구글 화보 검색]을 눌러 확인해 보세요.</p>';
+        descEl.textContent = '현재 목록 내 출연작: ' + workCount + '편';
+      }
+    }
+
+    function closeActressModal() {
+      document.getElementById('actress-modal').classList.add('hidden');
+    }
+
+    function toggleSave(encodedUrl) {
+      const url = decodeURIComponent(encodedUrl);
+      const item = allItems.find(i => i.url === url) || savedItems.find(i => i.url === url);
+      if (!item) return;
+      const idx = savedItems.findIndex(s => s.url === url);
+      if (idx >= 0) {
+        savedItems.splice(idx, 1);
+        showToast('보관함에서 제거되었습니다.');
+      } else {
+        savedItems.unshift(item);
+        showToast('⭐ 보관함에 저장되었습니다!');
+      }
+      safeStore.set('pjav_saved_v2', savedItems);
+      renderItems();
+    }
+
+    function renderItems() {
+      const container = document.getElementById('items-container');
+      const query = (document.getElementById('search-input').value || '').trim().toLowerCase();
+      document.getElementById('clear-search-btn').classList.toggle('hidden', !query);
+
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
+      const source = currentView === 'saved' ? savedItems : allItems;
+
+      const filtered = source.filter(i => {
+        if (currentView !== 'saved' && (startDate || endDate)) {
+          const itemDate = parseNormalizedDate(i);
+          if (itemDate) {
+            if (startDate && itemDate < startDate) return false;
+            if (endDate && itemDate > endDate) return false;
+          }
+        }
+        const hay = (i.title + ' ' + (i.actress || []).join(' ') + ' ' + (i.tags || []).join(' ') + ' ' + i.date).toLowerCase();
+        return !query || hay.includes(query);
+      });
+
+      document.getElementById('filter-count-label').textContent = '검색 결과 ' + filtered.length + '건';
+
+      const badge = document.getElementById('saved-badge');
+      badge.textContent = savedItems.length;
+      badge.classList.toggle('hidden', savedItems.length === 0);
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-xs text-slate-400">표시할 작품이 없습니다.</div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(item => {
+        const safeImg = getSafeImageUrl(item.thumb);
+        const origImg = (item.thumb || '').replace(/'/g, "\\'");
+        const isSaved = savedItems.some(s => s.url === item.url);
+        const torrents = item.torrents || [];
+        const normDate = parseNormalizedDate(item) || item.displayDate || item.date;
+
+        return `
+          <article class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+            ${safeImg ? `
+              <div class="w-full bg-black relative">
+                <img src="${safeImg}" referrerpolicy="no-referrer" loading="lazy" onerror="handleImgError(this, '${origImg}')" class="w-full max-h-96 object-contain mx-auto">
+              </div>
+            ` : ''}
+
+            <div class="p-4 space-y-2.5">
+              <div class="flex items-start justify-between gap-2">
+                <a href="${item.url}" target="_blank" class="font-extrabold text-base text-white hover:text-indigo-400 leading-snug break-words">
+                  ${item.title}
+                </a>
+                <button onclick="toggleSave('${encodeURIComponent(item.url)}')" class="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold border ${isSaved ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}">
+                  ${isSaved ? '★ 저장됨' : '☆ 보관'}
+                </button>
+              </div>
+
+              <div class="flex items-center space-x-2 text-xs text-slate-400">
+                <span class="font-bold text-indigo-400">📅 ${normDate}</span>
+                <span>·</span>
+                <a href="${item.url}" target="_blank" class="underline hover:text-slate-200">원본 보기 ↗</a>
+              </div>
+
+              ${(item.actress.length || item.tags.length) ? `
+                <div class="flex flex-wrap gap-1.5 pt-0.5">
+                  ${item.actress.map(a => `
+                    <button onclick="openActressModal('${a.replace(/'/g, "\\'")}')" class="text-[11px] bg-rose-500/20 hover:bg-rose-500/30 active:scale-95 border border-rose-500/40 text-rose-300 px-2.5 py-1 rounded-lg font-extrabold flex items-center space-x-1 transition">
+                      <span>👩 ${a}</span>
+                      <span class="text-[9px] text-rose-400">🔍사진</span>
+                    </button>
+                  `).join('')}
+                  ${item.tags.map(t => `
+                    <button onclick="document.getElementById('search-input').value='${t.replace(/'/g, "\\'")}'; renderItems();" class="text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-2 py-1 rounded-lg">
+                      ${t}
+                    </button>
+                  `).join('')}
+                </div>
+              ` : ''}
+
+              <div class="pt-2 border-t border-slate-800/80 space-y-2">
+                ${torrents.length > 0 ? torrents.map(t => `
+                  <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                    <div class="flex items-center space-x-1.5 shrink-0">
+                      ${t.downloadUrl ? `
+                        <a href="${t.downloadUrl}" target="_blank" download class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
+                          <span>📥</span><span>Download</span>
+                        </a>
+                      ` : ''}
+                      ${t.magnetUrl ? `
+                        <a href="${t.magnetUrl}" class="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
+                          <span>🧲</span><span>Magnet</span>
+                        </a>
+                        <button onclick="copyText('${t.magnetUrl.replace(/'/g, "\\'")}')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold px-2 py-1.5 rounded-lg">
+                          복사
+                        </button>
+                      ` : ''}
+                    </div>
+                    <div class="text-right text-[11px] leading-tight">
+                      <div class="font-extrabold text-emerald-400">${t.size || ''}</div>
+                      <div class="text-slate-400">
+                        ${t.seeds ? '<span class="text-sky-400">S:' + t.seeds + '</span> ' : ''}
+                        ${t.leeches ? '<span class="text-amber-400">L:' + t.leeches + '</span> ' : ''}
+                        ${t.date ? '<span>' + t.date + '</span>' : ''}
+                      </div>
+                    </div>
+                  </div>
+                `).join('') : `
+                  <a href="${item.url}" target="_blank" class="block w-full text-center bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-2.5 rounded-xl">
+                    🔗 원본 페이지에서 다운로드 확인
+                  </a>
+                `}
+              </div>
+            </div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    function switchView(v) {
+      currentView = v;
+      document.getElementById('nav-list').className = v === 'list' ? 'flex flex-col items-center text-indigo-400' : 'flex flex-col items-center text-slate-500';
+      document.getElementById('nav-saved').className = v === 'saved' ? 'flex flex-col items-center text-indigo-400 relative' : 'flex flex-col items-center text-slate-500 relative';
+      renderItems();
+    }
+
+    loadDataJson();
+  </script>
+</body>
+</html>
