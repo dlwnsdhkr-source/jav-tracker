@@ -3,16 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Daily Update & Downloader</title>
+  <title>ProjectJAV 업데이터</title>
 
-  <!-- 모바일 전체 화면 (PWA Standalone) 메타 태그 -->
+  <!-- 모바일 전체 화면 (개별 PWA 앱) 메타 태그 -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="UpdateApp">
+  <meta name="apple-mobile-web-app-title" content="PJAV앱">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0f172a">
-  <!-- 이미지 핫링크 차단 방지 전역 설정 -->
   <meta name="referrer" content="no-referrer">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2989/2989976.png">
+  <link rel="manifest" href="./manifest.json">
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -22,7 +23,7 @@
       -webkit-tap-highlight-color: transparent;
       font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Segoe UI", Roboto, sans-serif;
       padding-top: env(safe-area-inset-top);
-      padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+      padding-bottom: calc(4.8rem + env(safe-area-inset-bottom));
     }
     .scrollbar-none::-webkit-scrollbar { display: none; }
     .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
@@ -37,12 +38,12 @@
         <span class="text-xl">⚡</span>
         <div>
           <h1 class="font-extrabold text-base text-white leading-tight">ProjectJAV 업데이터</h1>
-          <p id="status-text" class="text-[11px] text-slate-400">캐시 데이터 준비 중...</p>
+          <p id="status-text" class="text-[11px] text-slate-400">초기화 중...</p>
         </div>
       </div>
       <div class="flex items-center space-x-1.5">
-        <button onclick="fetchBoardData(true)" id="refresh-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow active:scale-95 transition flex items-center space-x-1">
-          <span id="refresh-icon">🔄</span>
+        <button onclick="fetchBoardData(true)" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow active:scale-95 transition flex items-center space-x-1">
+          <span id="refresh-icon" class="inline-block">🔄</span>
           <span>새로고침</span>
         </button>
         <button onclick="openSettings()" class="p-2 text-slate-400 hover:text-white rounded-full text-lg">⚙️</button>
@@ -66,13 +67,13 @@
       <button onclick="setDateFilter('ALL')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-indigo-600 text-white shrink-0">전체 일자</button>
     </div>
 
-    <!-- 초기 로딩 스피너 (캐시가 없을 때만 표시) -->
+    <!-- 로딩 스피너 -->
     <div id="loading-box" class="hidden bg-slate-800/80 border border-slate-700 rounded-2xl p-8 text-center space-y-2">
       <div class="inline-block w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-      <p class="text-xs text-slate-300">사이트에서 최신 목록과 이미지를 추출하고 있습니다...</p>
+      <p class="text-xs text-slate-300">우회 서버를 통해 최신 목록과 이미지를 가져오는 중...</p>
     </div>
 
-    <!-- 게시물 리스트 (카드형 이미지 + 일자별 그룹화) -->
+    <!-- 게시물 카드 리스트 -->
     <div id="items-container" class="space-y-6"></div>
 
   </main>
@@ -141,15 +142,15 @@
         <div>
           <label class="block font-bold text-slate-300 mb-1">웹 크롤링 프록시 선택</label>
           <select id="input-proxy-mode" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none">
-            <option value="auto">자동 최단시간 응답 프록시 (추천)</option>
-            <option value="corsproxy">CorsProxy.io (빠름)</option>
+            <option value="auto">자동 최단시간 응답 서버 (추천)</option>
+            <option value="allorigins_json">AllOrigins JSON (안정적)</option>
+            <option value="corsproxy">CorsProxy.io</option>
             <option value="codetabs">CodeTabs Proxy</option>
-            <option value="allorigins">AllOrigins Proxy</option>
           </select>
         </div>
         <label class="flex items-center space-x-2 pt-1 cursor-pointer">
           <input type="checkbox" id="input-img-proxy" checked class="rounded text-indigo-600 w-4 h-4">
-          <span class="text-slate-300 font-bold">이미지 차단 우회 프록시(wsrv.nl) 강제 적용</span>
+          <span class="text-slate-300 font-bold">이미지 차단 우회 프록시(wsrv.nl) 사용</span>
         </label>
       </div>
       <div class="flex space-x-2">
@@ -160,21 +161,27 @@
   </div>
 
   <script>
-    let baseUrl = localStorage.getItem('pjav_base_url') || 'https://projectjav.com';
-    let proxyMode = localStorage.getItem('pjav_proxy_mode') || 'auto';
-    let useImgProxy = localStorage.getItem('pjav_img_proxy') !== 'false';
+    // 로컬 파일(content://)에서도 에러가 나지 않도록 안전한 스토리지 래퍼 사용
+    const safeStorage = {
+      get: (k, fallback) => { try { const v = localStorage.getItem(k); return v !== null ? v : fallback; } catch (e) { return fallback; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+      remove: (k) => { try { localStorage.removeItem(k); } catch (e) {} }
+    };
+
+    let baseUrl = safeStorage.get('pjav_base_url', 'https://projectjav.com');
+    let proxyMode = safeStorage.get('pjav_proxy_mode', 'auto');
+    let useImgProxy = safeStorage.get('pjav_img_proxy', 'true') !== 'false';
     let currentPage = 1;
     let currentView = 'list';
     let currentDateFilter = 'ALL';
     let allItems = [];
-    let savedItems = JSON.parse(localStorage.getItem('pjav_saved_items') || '[]');
-    let detailCache = JSON.parse(localStorage.getItem('pjav_detail_cache') || '{}');
+    let savedItems = JSON.parse(safeStorage.get('pjav_saved_items', '[]'));
+    let detailCache = JSON.parse(safeStorage.get('pjav_detail_cache', '{}'));
 
     document.getElementById('input-base-url').value = baseUrl;
     document.getElementById('input-proxy-mode').value = proxyMode;
     document.getElementById('input-img-proxy').checked = useImgProxy;
 
-    // 상대 경로를 절대 경로로 변환
     function resolveUrl(raw) {
       if (!raw) return '';
       let u = raw.trim();
@@ -185,17 +192,15 @@
       return u;
     }
 
-    // 이미지 핫링크(403 Forbidden) 우회 URL 생성기
     function getSafeImageUrl(rawUrl) {
       const full = resolveUrl(rawUrl);
       if (!full || full.startsWith('data:')) return '';
       if (useImgProxy) {
-        return `https://wsrv.nl/?url=${encodeURIComponent(full)}&w=600&output=webp`;
+        return `https://wsrv.nl/?url=${encodeURIComponent(full)}&w=640&output=webp`;
       }
       return full;
     }
 
-    // 이미지 로드 에러 시 프록시 우회 재시도 핸들러
     window.handleImgError = function(imgEl, originalUrl) {
       if (!imgEl.dataset.retried && originalUrl) {
         imgEl.dataset.retried = 'true';
@@ -205,7 +210,6 @@
       }
     };
 
-    // DOM 요소 안의 숨겨진 Lazy-load 이미지까지 모두 찾아내는 함수
     function extractBestImageFromNode(node) {
       if (!node) return '';
       const imgs = Array.from(node.querySelectorAll('img'));
@@ -225,7 +229,6 @@
           }
         }
       }
-      // CSS background-image에 들어있는 경우 탐색
       const styled = node.querySelector('[style*="background-image"]') || (node.getAttribute?.('style')?.includes('background-image') ? node : null);
       if (styled) {
         const styleStr = styled.getAttribute('style') || '';
@@ -235,31 +238,47 @@
       return '';
     }
 
-    // 초고속 병렬 프록시 호출 (가장 먼저 응답하는 프록시 채택)
+    // 4중 우회 프록시 (JSON 래핑 프록시 포함하여 차단율 최소화)
     async function fetchHtmlWithFallback(targetUrl) {
       const encoded = encodeURIComponent(targetUrl);
       const proxies = [
-        { name: 'corsproxy', url: `https://corsproxy.io/?${encoded}` },
-        { name: 'codetabs', url: `https://api.codetabs.com/v1/proxy?quest=${encoded}` },
-        { name: 'allorigins', url: `https://api.allorigins.win/raw?url=${encoded}` }
+        {
+          name: 'allorigins_json',
+          run: async (sig) => {
+            const r = await fetch(`https://api.allorigins.win/get?url=${encoded}`, { signal: sig });
+            const j = await r.json();
+            return j.contents || '';
+          }
+        },
+        {
+          name: 'codetabs',
+          run: async (sig) => {
+            const r = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encoded}`, { signal: sig });
+            return await r.text();
+          }
+        },
+        {
+          name: 'corsproxy',
+          run: async (sig) => {
+            const r = await fetch(`https://corsproxy.io/?${encoded}`, { signal: sig });
+            return await r.text();
+          }
+        },
+        {
+          name: 'allorigins_raw',
+          run: async (sig) => {
+            const r = await fetch(`https://api.allorigins.win/raw?url=${encoded}`, { signal: sig });
+            return await r.text();
+          }
+        }
       ];
 
-      if (proxyMode !== 'auto') {
-        const chosen = proxies.find(p => p.name === proxyMode) || proxies[0];
-        const res = await fetch(chosen.url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.text();
-      }
-
-      // auto 모드: 3개 프록시에 동시 요청을 보내 가장 먼저 도착한 정상 HTML 사용 (속도 3배 향상)
-      const fetchOne = async (p) => {
+      const tryProxy = async (p) => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 9000);
+        const timer = setTimeout(() => controller.abort(), 10000);
         try {
-          const res = await fetch(p.url, { signal: controller.signal });
+          const text = await p.run(controller.signal);
           clearTimeout(timer);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const text = await res.text();
           if (!text || text.length < 200 || text.includes('Just a moment...')) {
             throw new Error('Blocked');
           }
@@ -270,29 +289,34 @@
         }
       };
 
+      if (proxyMode !== 'auto') {
+        const chosen = proxies.find(p => p.name === proxyMode) || proxies[0];
+        const res = await tryProxy(chosen);
+        document.getElementById('status-text').textContent = `⚡ 연결 완료 (${res.proxyName})`;
+        return res.text;
+      }
+
       try {
-        const fastest = await Promise.any(proxies.map(fetchOne));
-        document.getElementById('status-text').textContent = `⚡ 실시간 갱신 완료 (${fastest.proxyName} · ${new Date().toLocaleTimeString()})`;
+        const fastest = await Promise.any(proxies.map(tryProxy));
+        document.getElementById('status-text').textContent = `⚡ 실시간 동기화 (${fastest.proxyName} · ${new Date().toLocaleTimeString()})`;
         return fastest.text;
       } catch (e) {
-        throw new Error('프록시 응답 지연 또는 차단됨');
+        throw new Error('외부 사이트 응답 지연 또는 파일 직접 실행(content://) 차단');
       }
     }
 
-    // 사이트 목록 크롤링 (로컬 캐시 즉시 표시 + 백그라운드 업데이트)
     async function fetchBoardData(isManual = false) {
       const loadingBox = document.getElementById('loading-box');
       const refreshIcon = document.getElementById('refresh-icon');
-      const cacheKey = `pjav_cache_v2_page_${currentPage}`;
-      const cachedRaw = localStorage.getItem(cacheKey);
+      const cacheKey = `pjav_cache_v3_page_${currentPage}`;
+      const cachedRaw = safeStorage.get(cacheKey, null);
 
-      // 1. 캐시가 있으면 앱 켜자마자 0.1초 만에 즉시 화면에 렌더링
       if (cachedRaw && !isManual) {
         try {
           allItems = JSON.parse(cachedRaw);
           renderDateTabs();
           renderItems();
-          document.getElementById('status-text').textContent = `⚡ 저장된 목록 표시 중 (백그라운드 동기화 중...)`;
+          document.getElementById('status-text').textContent = `⚡ 캐시 목록 즉시 로드됨 (백그라운드 갱신 중...)`;
         } catch (e) {}
       } else {
         loadingBox.classList.remove('hidden');
@@ -303,8 +327,7 @@
       try {
         const pageUrl = currentPage === 1 ? baseUrl : `${baseUrl}/?page=${currentPage}`;
         const html = await fetchHtmlWithFallback(pageUrl);
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
+        const doc = new DOMParser().parseFromString(html, 'text/html');
 
         const parsedItems = [];
         const seenLinks = new Set();
@@ -328,7 +351,6 @@
           const fullUrl = resolveUrl(rawHref);
           if (seenLinks.has(fullUrl) || fullUrl === baseUrl || fullUrl === baseUrl + '/') return;
 
-          // 제목 추출 (텍스트가 없으면 이미지 alt나 title 속성 활용)
           let title = (mainLink.textContent || mainLink.getAttribute('title') || '').trim().replace(/\s+/g, ' ');
           if (title.length < 3) {
             const imgAlt = el.querySelector('img')?.getAttribute('alt') || '';
@@ -336,18 +358,15 @@
           }
           if (!title || title.length < 2) return;
 
-          // 날짜 추출
           const blockText = el.textContent || '';
           const dateMatch = blockText.match(dateRegex);
           const dateStr = dateMatch ? dateMatch[0] : '최근 업데이트';
 
-          // 이미지 추출 (현재 블록 -> 상위 부모 블록까지 폭넓게 탐색)
           let thumb = extractBestImageFromNode(el);
           if (!thumb && el.parentElement) {
             thumb = extractBestImageFromNode(el.parentElement);
           }
 
-          // 바로 노출된 첨부파일(.torrent 등) 추출
           const directDownloads = [];
           links.forEach(a => {
             const h = a.getAttribute('href') || '';
@@ -370,18 +389,22 @@
 
         if (parsedItems.length > 0) {
           allItems = parsedItems;
-          localStorage.setItem(cacheKey, JSON.stringify(allItems));
+          safeStorage.set(cacheKey, JSON.stringify(allItems));
           renderDateTabs();
           renderItems();
-          // 목록에 썸네일이 비어 있는 상위 항목들은 백그라운드에서 이미지 자동 보충
           prefetchMissingThumbnails();
         }
       } catch (err) {
         if (allItems.length === 0) {
+          const isContentUrl = location.protocol === 'content:' || location.protocol === 'file:';
           document.getElementById('items-container').innerHTML = `
-            <div class="bg-rose-950/50 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200 space-y-2">
-              <p class="font-extrabold text-sm">⚠️ 사이트 연결 지연 (${err.message})</p>
-              <p class="text-rose-300 leading-relaxed">우측 상단 [🔄 새로고침]을 다시 누르거나 [⚙️ 설정]에서 다른 프록시를 선택해 보세요.</p>
+            <div class="bg-rose-950/60 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200 space-y-2">
+              <p class="font-extrabold text-sm">⚠️ 데이터를 불러오지 못했습니다</p>
+              <p class="text-rose-300 leading-relaxed">
+                ${isContentUrl
+                  ? '현재 스마트폰의 내 파일(content://)에서 직접 열려 있어 브라우저 보안 정책으로 외부 통신이 차단되었습니다. GitHub Pages 주소(https://...)로 접속하시면 정상 작동합니다.'
+                  : '우측 상단 [🔄 새로고침]을 다시 누르거나 [⚙️ 설정]에서 다른 프록시를 선택해 보세요.'}
+              </p>
             </div>
           `;
         }
@@ -391,7 +414,6 @@
       }
     }
 
-    // 목록에 이미지가 없는 항목(최대 6개)의 상세 페이지에서 대표 이미지를 자동으로 가져와 채워넣기
     async function prefetchMissingThumbnails() {
       const missing = allItems.filter(i => !i.thumb).slice(0, 6);
       for (const item of missing) {
@@ -408,7 +430,7 @@
           const bodyImg = ogImg ? resolveUrl(ogImg) : extractBestImageFromNode(doc.body);
           if (bodyImg) {
             item.thumb = bodyImg;
-            localStorage.setItem(`pjav_cache_v2_page_${currentPage}`, JSON.stringify(allItems));
+            safeStorage.set(`pjav_cache_v3_page_${currentPage}`, JSON.stringify(allItems));
             renderItems();
           }
         } catch (e) {}
@@ -431,7 +453,6 @@
       renderItems();
     }
 
-    // 게시물 리스트 렌더링 (큼직한 썸네일 이미지 노출)
     function renderItems() {
       const container = document.getElementById('items-container');
       const query = (document.getElementById('search-input').value || '').trim().toLowerCase();
@@ -465,8 +486,9 @@
             ${items.map(item => {
               const safeThumb = item.thumb ? getSafeImageUrl(item.thumb) : '';
               const origThumb = item.thumb || '';
+              const itemIndex = allItems.findIndex(x => x.url === item.url);
               return `
-                <div onclick='openItemDetail(${JSON.stringify(item).replace(/'/g, "&#39;")})' class="bg-slate-800 hover:bg-slate-750 border border-slate-700/80 rounded-2xl overflow-hidden cursor-pointer active:scale-[0.99] transition shadow-md">
+                <div onclick="openItemByUrl('${encodeURIComponent(item.url)}')" class="bg-slate-800 hover:bg-slate-750 border border-slate-700/80 rounded-2xl overflow-hidden cursor-pointer active:scale-[0.99] transition shadow-md">
                   ${safeThumb ? `
                     <div class="w-full h-44 bg-slate-950 relative overflow-hidden flex items-center justify-center">
                       <img src="${safeThumb}" referrerpolicy="no-referrer" loading="lazy" onerror="handleImgError(this, '${origThumb.replace(/'/g, "\\'")}')" class="w-full h-full object-cover">
@@ -496,7 +518,12 @@
       updateSavedBadge();
     }
 
-    // 상세 페이지 열기 (본문 내 모든 이미지 + 첨부파일 추출 및 캐싱)
+    function openItemByUrl(encodedUrl) {
+      const targetUrl = decodeURIComponent(encodedUrl);
+      const item = allItems.find(i => i.url === targetUrl) || savedItems.find(i => i.url === targetUrl);
+      if (item) openItemDetail(item);
+    }
+
     async function openItemDetail(item) {
       const modal = document.getElementById('detail-modal');
       const attBox = document.getElementById('modal-attachments');
@@ -514,7 +541,6 @@
 
       modal.classList.remove('hidden');
 
-      // 이미 한 번 열어본 게시물이면 캐시에서 0.1초 만에 즉시 표시
       if (detailCache[item.url]) {
         renderDetailModalContent(detailCache[item.url].images, detailCache[item.url].files);
         return;
@@ -530,7 +556,6 @@
         const detailHtml = await fetchHtmlWithFallback(item.url);
         const doc = new DOMParser().parseFromString(detailHtml, 'text/html');
 
-        // 1. 본문 내 모든 고화질/프리뷰 이미지 추출
         const images = [];
         const seenImgs = new Set();
         const addImg = (u) => {
@@ -550,16 +575,14 @@
           if (src) addImg(src);
         });
 
-        // 추출한 첫 번째 이미지를 목록 썸네일에도 반영
         if (images.length > 0 && !item.thumb) {
           item.thumb = images[0];
           const target = allItems.find(i => i.url === item.url);
           if (target) target.thumb = images[0];
-          localStorage.setItem(`pjav_cache_v2_page_${currentPage}`, JSON.stringify(allItems));
+          safeStorage.set(`pjav_cache_v3_page_${currentPage}`, JSON.stringify(allItems));
           renderItems();
         }
 
-        // 2. 첨부파일 및 마그넷 링크 추출
         const files = [...(item.directDownloads || [])];
         const seenUrls = new Set(files.map(f => f.url));
 
@@ -592,9 +615,8 @@
           }
         });
 
-        // 상세 결과 캐시 저장
         detailCache[item.url] = { images: images.slice(0, 10), files };
-        localStorage.setItem('pjav_detail_cache', JSON.stringify(detailCache));
+        safeStorage.set('pjav_detail_cache', JSON.stringify(detailCache));
 
         renderDetailModalContent(images.slice(0, 10), files);
       } catch (e) {
@@ -654,7 +676,7 @@
       const idx = savedItems.findIndex(s => s.url === item.url);
       if (idx >= 0) savedItems.splice(idx, 1);
       else savedItems.unshift(item);
-      localStorage.setItem('pjav_saved_items', JSON.stringify(savedItems));
+      safeStorage.set('pjav_saved_items', JSON.stringify(savedItems));
       updateSavedBadge();
       closeDetailModal();
       renderItems();
@@ -691,21 +713,22 @@
       baseUrl = document.getElementById('input-base-url').value.trim().replace(/\/$/, '');
       proxyMode = document.getElementById('input-proxy-mode').value;
       useImgProxy = document.getElementById('input-img-proxy').checked;
-      localStorage.setItem('pjav_base_url', baseUrl);
-      localStorage.setItem('pjav_proxy_mode', proxyMode);
-      localStorage.setItem('pjav_img_proxy', String(useImgProxy));
+      safeStorage.set('pjav_base_url', baseUrl);
+      safeStorage.set('pjav_proxy_mode', proxyMode);
+      safeStorage.set('pjav_img_proxy', String(useImgProxy));
       closeSettings();
       fetchBoardData(true);
     }
 
     function clearCacheAndReload() {
-      Object.keys(localStorage).forEach(k => {
-        if (k.startsWith('pjav_cache_') || k === 'pjav_detail_cache') localStorage.removeItem(k);
-      });
+      try {
+        Object.keys(localStorage).forEach(k => {
+          if (k.startsWith('pjav_cache_') || k === 'pjav_detail_cache') localStorage.removeItem(k);
+        });
+      } catch (e) {}
       location.reload();
     }
 
-    // 앱 시작 시 즉시 실행
     fetchBoardData(false);
   </script>
 </body>
