@@ -39,9 +39,104 @@
         </div>
       </div>
       <div class="flex items-center space-x-1.5">
-        <button onclick="fetchBoardData()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow active:scale-95 transition">
-          🔄 새로고침
-        </button>
+            // 사이트 목록 페이지 파싱 (캐시 우선 로드 적용)
+    async function fetchBoardData(isManual = false) {
+      const loadingBox = document.getElementById('loading-box');
+      
+      // 저장된 캐시가 있다면 수동 새로고침이 아닐 때 즉시 먼저 렌더링
+      const cached = localStorage.getItem('pjav_cached_items_' + currentPage);
+      if (cached && !isManual && allItems.length === 0) {
+        allItems = JSON.parse(cached);
+        renderDateTabs();
+        renderItems();
+      } else if (!cached || isManual) {
+        loadingBox.classList.remove('hidden');
+      }
+
+      try {
+        const pageUrl = currentPage === 1 ? baseUrl : `${baseUrl}/?page=${currentPage}`;
+        const html = await fetchHtmlWithFallback(pageUrl);
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        const parsedItems = [];
+        const seenLinks = new Set();
+        const dateRegex = /(20\d{2}[-./]\d{1,2}[-./]\d{1,2})|(\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+20\d{2}\b)|(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s*20\d{2}\b)|(\b\d{2}[-./]\d{2}\b)/i;
+
+        const containers = doc.querySelectorAll('tr, article, .post, .item, .card, li, .row');
+
+        containers.forEach((el) => {
+          const links = Array.from(el.querySelectorAll('a[href]'));
+          if (links.length === 0) return;
+
+          const mainLink = links.find(a => {
+            const href = a.getAttribute('href') || '';
+            const txt = a.textContent.trim();
+            return txt.length >= 4 && !href.startsWith('javascript') && !href.startsWith('#') && !href.startsWith('magnet:');
+          });
+
+          if (!mainLink) return;
+
+          let fullUrl = mainLink.getAttribute('href');
+          if (fullUrl.startsWith('/')) fullUrl = baseUrl.replace(/\/$/, '') + fullUrl;
+          else if (!fullUrl.startsWith('http')) fullUrl = baseUrl.replace(/\/$/, '') + '/' + fullUrl;
+
+          if (seenLinks.has(fullUrl)) return;
+
+          const title = mainLink.textContent.trim().replace(/\s+/g, ' ');
+          if (title.length < 3) return;
+
+          const blockText = el.textContent || '';
+          const dateMatch = blockText.match(dateRegex);
+          const dateStr = dateMatch ? dateMatch[0] : '최근 업데이트';
+
+          const directDownloads = [];
+          links.forEach(a => {
+            const h = a.getAttribute('href') || '';
+            const t = a.textContent.trim() || '첨부파일';
+            if (h.startsWith('magnet:') || /\.(torrent|zip|rar|7z|mp4|mkv|srt|ass)(\?|$)/i.test(h) || /download|dl|torrent|magnet/i.test(h)) {
+              let dlUrl = h;
+              if (dlUrl.startsWith('/')) dlUrl = baseUrl.replace(/\/$/, '') + dlUrl;
+              directDownloads.push({ label: t || '다운로드', url: dlUrl });
+            }
+          });
+
+          const imgEl = el.querySelector('img');
+          let thumb = imgEl ? (imgEl.getAttribute('data-src') || imgEl.getAttribute('src') || '') : '';
+          if (thumb && thumb.startsWith('/')) thumb = baseUrl.replace(/\/$/, '') + thumb;
+
+          seenLinks.add(fullUrl);
+          parsedItems.push({
+            id: btoa(encodeURIComponent(fullUrl)).slice(0, 16),
+            title,
+            url: fullUrl,
+            date: dateStr,
+            thumb,
+            directDownloads
+          });
+        });
+
+        if (parsedItems.length > 0) {
+          allItems = parsedItems;
+          // 성공 시 로컬 캐시에 저장
+          localStorage.setItem('pjav_cached_items_' + currentPage, JSON.stringify(allItems));
+          renderDateTabs();
+          renderItems();
+        }
+      } catch (err) {
+        if (!cached) {
+          document.getElementById('items-container').innerHTML = `
+            <div class="bg-rose-950/50 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200 space-y-2">
+              <p class="font-extrabold text-sm">⚠️ 데이터를 가져오지 못했습니다 (${err.message})</p>
+              <p class="text-rose-300">상단 [⚙️ 설정]에서 프록시를 변경해 보세요.</p>
+            </div>
+          `;
+        }
+      } finally {
+        loadingBox.classList.add('hidden');
+      }
+    }
+
         <button onclick="openSettings()" class="p-2 text-slate-400 hover:text-white rounded-full text-lg">⚙️</button>
       </div>
     </div>
