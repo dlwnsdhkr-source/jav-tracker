@@ -53,7 +53,7 @@
 
     <!-- 검색창 -->
     <div class="relative">
-      <input type="text" id="search-input" oninput="renderItems()" placeholder="품번(예: Muka-011), 배우명, 태그 검색..." class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-3.5 pr-9 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 outline-none">
+      <input type="text" id="search-input" oninput="renderItems()" placeholder="품번(예: MUKA-011), 배우명, 태그 검색..." class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-3.5 pr-9 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 outline-none">
       <button onclick="clearSearch()" id="clear-search-btn" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-sm px-1">✕</button>
     </div>
 
@@ -142,11 +142,9 @@
 
     let allItems = [];
     let savedItems = safeStore.get('pjav_saved_v2', []);
-    // 기존에 잘못 캐시된 actor.php 웹페이지 주소를 무시하도록 새 캐시 키(v3) 사용
     let actressImgCache = safeStore.get('pjav_actress_img_v3', {});
     let currentView = 'list';
 
-    // URL이 웹페이지(.php 등)가 아닌 실제 이미지 URL인지 검증
     function isValidImageUrl(url) {
       if (!url || typeof url !== 'string') return false;
       const low = url.toLowerCase();
@@ -175,13 +173,24 @@
       setTimeout(() => t.classList.add('hidden'), 2000);
     }
 
-    function copyText(txt) {
-      navigator.clipboard.writeText(txt).then(() => showToast('📋 마그넷 링크가 복사되었습니다!'));
+    function copyText(txt, label) {
+      navigator.clipboard.writeText(txt).then(() => showToast(label || '📋 클립보드에 복사되었습니다!'));
     }
 
     function clearSearch() {
       document.getElementById('search-input').value = '';
       renderItems();
+    }
+
+    // 제목이나 URL에서 품번(Code, 예: MUKA-011, FC2-PPV-1234567 등) 추출
+    function extractWorkCode(item) {
+      if (item.code) return String(item.code).toUpperCase();
+      const text = (item.title || '') + ' ' + (item.url || '');
+      const fc2Match = text.match(/\b(FC2[-_\s]?PPV[-_\s]?\d{5,8})\b/i);
+      if (fc2Match) return fc2Match[1].toUpperCase().replace(/[\s_]+/g, '-');
+      const codeMatch = text.match(/\b([A-Za-z]{2,6}-\d{2,5})\b/);
+      if (codeMatch) return codeMatch[1].toUpperCase();
+      return '';
     }
 
     function parseNormalizedDate(item) {
@@ -234,7 +243,6 @@
       renderItems();
     }
 
-    // 프록시를 통해 AVDBS 웹페이지 HTML을 가져오는 헬퍼
     async function fetchHtmlViaProxy(targetUrl) {
       const encoded = encodeURIComponent(targetUrl);
       const proxies = [
@@ -254,7 +262,6 @@
       return '';
     }
 
-    // AVDBS HTML 문서 안에서 진짜 배우 사진(.jpg/.png) URL만 뽑아내는 파서
     function parseRealActorImgFromAvdbsHtml(html) {
       if (!html) return '';
       const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -279,7 +286,6 @@
       return '';
     }
 
-    // AVDBS에서 배우 이름으로 검색 -> actor.php?actor_idx=... 페이지 탐색 -> 실제 .jpg 추출
     async function searchAvdbsActorPhoto(actressName) {
       const searchUrls = [
         'https://www.avdbs.com/menu/search.php?kwd=' + encodeURIComponent(actressName),
@@ -291,17 +297,14 @@
         if (!html) continue;
 
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        // 검색 결과 내 배우 고유 링크(actor.php?actor_idx=...) 찾기
         const actorLink = Array.from(doc.querySelectorAll('a[href*="actor.php?actor_idx="]'))[0];
         if (actorLink) {
           const href = actorLink.getAttribute('href');
           const fullActorPageUrl = href.startsWith('http') ? href : 'https://www.avdbs.com' + (href.startsWith('/') ? '' : '/menu/') + href.replace(/^\/?menu\//, '');
 
-          // 검색 결과 카드 안에 이미 썸네일 이미지(.jpg)가 있으면 바로 추출
           const cardImg = parseRealActorImgFromAvdbsHtml(actorLink.parentElement ? actorLink.parentElement.outerHTML : '');
           if (cardImg) return { imgUrl: cardImg, pageUrl: fullActorPageUrl };
 
-          // 상세 배우 페이지(actor.php?actor_idx=번호)로 접속해서 증명사진 추출
           const detailHtml = await fetchHtmlViaProxy(fullActorPageUrl);
           const detailImg = parseRealActorImgFromAvdbsHtml(detailHtml);
           if (detailImg) return { imgUrl: detailImg, pageUrl: fullActorPageUrl };
@@ -348,17 +351,17 @@
       }
 
       allItems = loadedData.items.filter(i => i && i.title && i.title.toLowerCase() !== 'download').map(item => {
-        // 만약 data.json의 actressImages에 미리 수집된 실제 이미지가 있으면 캐시에 등록
         if (item.actressImages && typeof item.actressImages === 'object') {
           Object.entries(item.actressImages).forEach(([k, v]) => {
             if (isValidImageUrl(v)) actressImgCache[k] = { imgUrl: v, pageUrl: 'https://www.avdbs.com/menu/search.php?kwd=' + encodeURIComponent(k) };
           });
         }
 
-        // 혹시 thumb에 actor.php?actor_idx=12892 같은 잘못된 링크가 들어있으면 비워서 엑스박스 방지
         const cleanThumb = isValidImageUrl(item.thumb) ? item.thumb : '';
+        const code = extractWorkCode(item);
 
         return {
+          code: code,
           title: item.title || '제목 없음',
           url: item.url || '#',
           date: item.date || '',
@@ -410,7 +413,6 @@
       imgBox.innerHTML = '<div class="w-7 h-7 border-2 border-rose-500 border-t-transparent rounded-full animate-spin mb-2"></div><p class="text-xs text-slate-400">AVDBS에서 \'' + actressName + '\' 프로필 사진을 검색 중...</p>';
       descEl.textContent = '수집된 목록 내 출연작 ' + relatedWorks.length + '편';
 
-      // 실시간 AVDBS 검색 실행
       const result = await searchAvdbsActorPhoto(actressName);
       if (result.pageUrl) avdbsBtn.href = result.pageUrl;
 
@@ -474,7 +476,8 @@
             if (endDate && itemDate > endDate) return false;
           }
         }
-        const hay = (i.title + ' ' + (i.actress || []).join(' ') + ' ' + (i.tags || []).join(' ') + ' ' + i.date).toLowerCase();
+        const code = extractWorkCode(i);
+        const hay = (code + ' ' + i.title + ' ' + (i.actress || []).join(' ') + ' ' + (i.tags || []).join(' ') + ' ' + i.date).toLowerCase();
         return !query || hay.includes(query);
       });
 
@@ -495,31 +498,45 @@
         const isSaved = savedItems.some(s => s.url === item.url);
         const torrents = item.torrents || [];
         const normDate = parseNormalizedDate(item) || item.displayDate || item.date;
+        const workCode = extractWorkCode(item);
 
         return `
           <article class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
             ${safeImg ? `
               <div class="w-full bg-black relative">
                 <img src="${safeImg}" referrerpolicy="no-referrer" loading="lazy" onerror="handleImgError(this, '${origImg}')" class="w-full max-h-96 object-contain mx-auto">
+                ${workCode ? `
+                  <button onclick="copyText('${workCode}', '📋 품번 [${workCode}] 복사됨!')" class="absolute top-2.5 left-2.5 bg-indigo-600/95 backdrop-blur text-white font-mono font-extrabold text-xs px-2.5 py-1 rounded-lg shadow-md active:scale-95">
+                    🏷️ ${workCode}
+                  </button>
+                ` : ''}
               </div>
             ` : ''}
 
             <div class="p-4 space-y-2.5">
-              <div class="flex items-start justify-between gap-2">
-                <a href="${item.url}" target="_blank" class="font-extrabold text-base text-white hover:text-indigo-400 leading-snug break-words">
-                  ${item.title}
-                </a>
+              <!-- 품번(Code) 배지 + 보관 버튼 줄 -->
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center space-x-1.5">
+                  ${workCode ? `
+                    <button onclick="copyText('${workCode}', '📋 품번 [${workCode}] 복사됨!')" class="bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-mono font-extrabold text-xs px-2.5 py-0.5 rounded-md active:scale-95">
+                      ${workCode}
+                    </button>
+                  ` : '<span class="text-[11px] text-slate-500 font-bold">CODE 없음</span>'}
+                  <span class="text-xs font-bold text-slate-400">📅 ${normDate}</span>
+                </div>
                 <button onclick="toggleSave('${encodeURIComponent(item.url)}')" class="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold border ${isSaved ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}">
                   ${isSaved ? '★ 저장됨' : '☆ 보관'}
                 </button>
               </div>
 
-              <div class="flex items-center space-x-2 text-xs text-slate-400">
-                <span class="font-bold text-indigo-400">📅 ${normDate}</span>
-                <span>·</span>
-                <a href="${item.url}" target="_blank" class="underline hover:text-slate-200">원본 보기 ↗</a>
+              <!-- 작품 제목 -->
+              <div>
+                <a href="${item.url}" target="_blank" class="font-extrabold text-base text-white hover:text-indigo-400 leading-snug break-words block">
+                  ${item.title}
+                </a>
               </div>
 
+              <!-- 배우(AVDBS 검색) 및 태그 -->
               ${(item.actress.length || item.tags.length) ? `
                 <div class="flex flex-wrap gap-1.5 pt-0.5">
                   ${item.actress.map(a => `
@@ -536,6 +553,7 @@
                 </div>
               ` : ''}
 
+              <!-- 하단 토렌트 Download & Magnet 목록 -->
               <div class="pt-2 border-t border-slate-800/80 space-y-2">
                 ${torrents.length > 0 ? torrents.map(t => `
                   <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
@@ -549,7 +567,7 @@
                         <a href="${t.magnetUrl}" class="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
                           <span>🧲</span><span>Magnet</span>
                         </a>
-                        <button onclick="copyText('${t.magnetUrl.replace(/'/g, "\\'")}')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold px-2 py-1.5 rounded-lg">
+                        <button onclick="copyText('${t.magnetUrl.replace(/'/g, "\\'")}', '📋 마그넷 링크가 복사되었습니다!')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold px-2 py-1.5 rounded-lg">
                           복사
                         </button>
                       ` : ''}
