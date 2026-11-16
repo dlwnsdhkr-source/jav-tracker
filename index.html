@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>ProjectJAV 업데이터</title>
+  <title>ProjectJAV 업데이터 v4.2</title>
 
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -38,12 +38,15 @@
       <div class="flex items-center space-x-2">
         <span class="text-xl">⚡</span>
         <div>
-          <h1 class="font-extrabold text-base text-white leading-tight">ProjectJAV 업데이터</h1>
+          <div class="flex items-center space-x-1.5">
+            <h1 class="font-extrabold text-base text-white leading-tight">ProjectJAV 업데이터</h1>
+            <span class="text-[10px] bg-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded font-mono font-bold">v4.2</span>
+          </div>
           <p id="status-text" class="text-[11px] text-amber-400">앱 초기화 중...</p>
         </div>
       </div>
-      <button onclick="loadDataJson()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow active:scale-95 transition">
-        🔄 목록 갱신
+      <button onclick="forceReloadApp()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow active:scale-95 transition">
+        🔄 강제 갱신
       </button>
     </div>
   </header>
@@ -182,14 +185,59 @@
       renderItems();
     }
 
-    // 제목이나 URL에서 품번(Code, 예: MUKA-011, FC2-PPV-1234567 등) 추출
+    function forceReloadApp() {
+      const base = location.href.split('?')[0];
+      location.replace(base + '?v=' + Date.now());
+    }
+
+    // 초강력 품번(Code) 추출기: 제목 + URL + 이미지 파일명 + 마그넷/토렌트 링크 전체 탐색
     function extractWorkCode(item) {
-      if (item.code) return String(item.code).toUpperCase();
-      const text = (item.title || '') + ' ' + (item.url || '');
-      const fc2Match = text.match(/\b(FC2[-_\s]?PPV[-_\s]?\d{5,8})\b/i);
-      if (fc2Match) return fc2Match[1].toUpperCase().replace(/[\s_]+/g, '-');
-      const codeMatch = text.match(/\b([A-Za-z]{2,6}-\d{2,5})\b/);
-      if (codeMatch) return codeMatch[1].toUpperCase();
+      if (item.code && item.code.length >= 4) return String(item.code).toUpperCase();
+
+      const torrentStr = (item.torrents || []).map(t => (t.downloadUrl || '') + ' ' + (t.magnetUrl || '')).join(' ');
+      const sources = [
+        item.title || '',
+        decodeURIComponent(item.url || ''),
+        decodeURIComponent(item.thumb || ''),
+        decodeURIComponent(torrentStr)
+      ].join(' ');
+
+      // 1순위: FC2 품번 (FC2-PPV-1234567)
+      const fc2 = sources.match(/FC2[-_\s]*(?:PPV[-_\s]*)?(\d{5,8})/i);
+      if (fc2) return 'FC2-PPV-' + fc2[1];
+
+      // 2순위: 표준 품번 (예: MUKA-011, STARS-912, SONE_123, T28-615 등)
+      const ignorePrefixes = new Set(['HTTP', 'HTTPS', 'HTML', 'UTF', 'PAGE', 'MOVIE', 'VIDEO', 'POST', 'ITEM', 'IMAGE', 'THUMB', 'TORRENT', 'MAGNET', 'URN', 'BTIH', 'YEAR', 'DATE', 'WEBM', 'WEBP']);
+      const stdMatches = sources.matchAll(/\b([A-Za-z]{2,6}|\d[A-Za-z]{1,4})[-_](\d{2,5}[A-Za-z]?)\b/g);
+      for (const m of stdMatches) {
+        const prefix = m[1].toUpperCase();
+        const num = m[2].toUpperCase();
+        if (!ignorePrefixes.has(prefix) && !(prefix === '20' && num.length === 2)) {
+          return prefix + '-' + num;
+        }
+      }
+
+      // 3순위: 제목 맨 앞 단어 또는 URL 슬러그의 첫 단어에서 영문+숫자 결합형(예: MUKA011) 추출
+      const titleFirstWord = (item.title || '').trim().split(/\s+/)[0] || '';
+      const compactMatch = titleFirstWord.match(/^([A-Za-z]{2,6})(\d{3,5})$/);
+      if (compactMatch) {
+        return compactMatch[1].toUpperCase() + '-' + compactMatch[2];
+      }
+
+      // 4순위: URL 마지막 경로(/movie/muka-011-dressing...)에서 첫 토큰 추출
+      if (item.url) {
+        const slug = item.url.split('/').filter(Boolean).pop() || '';
+        const slugMatch = slug.match(/^([A-Za-z]{2,6})[-_]?(\d{2,5})/i);
+        if (slugMatch && !ignorePrefixes.has(slugMatch[1].toUpperCase())) {
+          return slugMatch[1].toUpperCase() + '-' + slugMatch[2];
+        }
+      }
+
+      // 5순위: 제목의 첫 단어가 숫자를 포함하고 있으면 그대로 코드로 표시
+      if (/\d/.test(titleFirstWord) && titleFirstWord.length <= 14) {
+        return titleFirstWord.toUpperCase();
+      }
+
       return '';
     }
 
@@ -346,7 +394,7 @@
 
       if (!loadedData || !Array.isArray(loadedData.items)) {
         statusEl.textContent = '⚠️ data.json 파일 없음 (' + lastError + ')';
-        container.innerHTML = '<div class="bg-rose-950/60 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200">GitHub [Actions] 탭에서 데이터 수집이 완료된 후 [🔄 목록 갱신]을 눌러주세요.</div>';
+        container.innerHTML = '<div class="bg-rose-950/60 border border-rose-800 rounded-2xl p-5 text-xs text-rose-200">GitHub [Actions] 탭에서 데이터 수집이 완료된 후 [🔄 강제 갱신]을 눌러주세요.</div>';
         return;
       }
 
@@ -358,10 +406,18 @@
         }
 
         const cleanThumb = isValidImageUrl(item.thumb) ? item.thumb : '';
-        const code = extractWorkCode(item);
+        let torrents = Array.isArray(item.torrents) ? item.torrents : [];
+        if (torrents.length === 0 && Array.isArray(item.files)) {
+          item.files.forEach(f => {
+            if (f.url && f.url.startsWith('magnet:')) {
+              torrents.push({ size: f.label || '마그넷', seeds: '', leeches: '', date: '', downloadUrl: '', magnetUrl: f.url });
+            } else if (f.url) {
+              torrents.push({ size: f.label || '토렌트', seeds: '', leeches: '', date: '', downloadUrl: f.url, magnetUrl: '' });
+            }
+          });
+        }
 
-        return {
-          code: code,
+        const tempObj = {
           title: item.title || '제목 없음',
           url: item.url || '#',
           date: item.date || '',
@@ -369,8 +425,10 @@
           thumb: cleanThumb,
           actress: Array.isArray(item.actress) ? item.actress : [],
           tags: Array.isArray(item.tags) ? item.tags : [],
-          torrents: Array.isArray(item.torrents) ? item.torrents : []
+          torrents: torrents
         };
+        tempObj.code = extractWorkCode(tempObj);
+        return tempObj;
       });
 
       safeStore.set('pjav_actress_img_v3', actressImgCache);
@@ -500,13 +558,19 @@
         const normDate = parseNormalizedDate(item) || item.displayDate || item.date;
         const workCode = extractWorkCode(item);
 
+        // 제목에서 품번 중복 제거 후 깔끔하게 정리
+        let cleanTitle = item.title || '';
+        if (workCode && cleanTitle.toUpperCase().startsWith(workCode)) {
+          cleanTitle = cleanTitle.slice(workCode.length).replace(/^[\s\-_:]+/, '');
+        }
+
         return `
           <article class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
             ${safeImg ? `
               <div class="w-full bg-black relative">
                 <img src="${safeImg}" referrerpolicy="no-referrer" loading="lazy" onerror="handleImgError(this, '${origImg}')" class="w-full max-h-96 object-contain mx-auto">
                 ${workCode ? `
-                  <button onclick="copyText('${workCode}', '📋 품번 [${workCode}] 복사됨!')" class="absolute top-2.5 left-2.5 bg-indigo-600/95 backdrop-blur text-white font-mono font-extrabold text-xs px-2.5 py-1 rounded-lg shadow-md active:scale-95">
+                  <button onclick="copyText('${workCode}', '📋 품번 [${workCode}] 복사됨!')" class="absolute top-2.5 left-2.5 bg-indigo-600 text-white font-mono font-extrabold text-sm px-3 py-1 rounded-xl shadow-lg border border-indigo-400/50 active:scale-95">
                     🏷️ ${workCode}
                   </button>
                 ` : ''}
@@ -514,14 +578,12 @@
             ` : ''}
 
             <div class="p-4 space-y-2.5">
-              <!-- 품번(Code) 배지 + 보관 버튼 줄 -->
-              <div class="flex items-center justify-between gap-2">
-                <div class="flex items-center space-x-1.5">
-                  ${workCode ? `
-                    <button onclick="copyText('${workCode}', '📋 품번 [${workCode}] 복사됨!')" class="bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-mono font-extrabold text-xs px-2.5 py-0.5 rounded-md active:scale-95">
-                      ${workCode}
-                    </button>
-                  ` : '<span class="text-[11px] text-slate-500 font-bold">CODE 없음</span>'}
+              <!-- 상단 품번(Code) 강조 바 + 날짜 + 보관 버튼 -->
+              <div class="flex items-center justify-between gap-2 bg-slate-950/80 border border-slate-800 px-3 py-2 rounded-xl">
+                <div class="flex items-center space-x-2">
+                  <button onclick="copyText('${workCode || item.title}', '📋 복사됨!')" class="bg-amber-500 text-slate-950 font-mono font-extrabold text-xs px-2.5 py-1 rounded-lg shadow active:scale-95">
+                    CODE: ${workCode || '자동추출'}
+                  </button>
                   <span class="text-xs font-bold text-slate-400">📅 ${normDate}</span>
                 </div>
                 <button onclick="toggleSave('${encodeURIComponent(item.url)}')" class="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold border ${isSaved ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}">
@@ -529,10 +591,10 @@
                 </button>
               </div>
 
-              <!-- 작품 제목 -->
+              <!-- 작품 제목 ([품번] + 제목 형태로 한 번 더 명시) -->
               <div>
                 <a href="${item.url}" target="_blank" class="font-extrabold text-base text-white hover:text-indigo-400 leading-snug break-words block">
-                  ${item.title}
+                  ${workCode ? `<span class="text-amber-400 font-mono mr-1">[${workCode}]</span>` : ''}${cleanTitle || item.title}
                 </a>
               </div>
 
