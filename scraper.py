@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 BASE_URL = "https://projectjav.com"
 # 한 번 실행할 때 긁어올 페이지 수 (1페이지당 48개 -> 10페이지면 약 480개 신규 스캔)
 # 더 많이 원하시면 15나 20으로 늘리셔도 됩니다.
-MAX_PAGES = 10
+MAX_PAGES = 20
 # data.json에 누적 보관할 최대 작품 수 (너무 커져서 앱이 느려지는 것 방지)
 MAX_KEEP_ITEMS = 3000
 
