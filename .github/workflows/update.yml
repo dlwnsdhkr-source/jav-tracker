@@ -29,7 +29,6 @@ jobs:
         run: |
           pip install cloudscraper beautifulsoup4 playwright
           playwright install chromium
-          playwright install-deps chromium
 
       - name: Run Scraper
         run: python scraper.py
