@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>ProjectJAV 업데이터 v4.2</title>
+  <title>ProjectJAV 업데이터 v4.3</title>
 
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -40,7 +40,7 @@
         <div>
           <div class="flex items-center space-x-1.5">
             <h1 class="font-extrabold text-base text-white leading-tight">ProjectJAV 업데이터</h1>
-            <span class="text-[10px] bg-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded font-mono font-bold">v4.2</span>
+            <span class="text-[10px] bg-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded font-mono font-bold">v4.3</span>
           </div>
           <p id="status-text" class="text-[11px] text-amber-400">앱 초기화 중...</p>
         </div>
@@ -60,7 +60,7 @@
       <button onclick="clearSearch()" id="clear-search-btn" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-sm px-1">✕</button>
     </div>
 
-    <!-- 기간(시작일 ~ 종료일) 필터 박스 -->
+    <!-- 기간(시작일 ~ 종료일) + 다운로드 필터 박스 -->
     <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2.5">
       <div class="flex items-center justify-between">
         <span class="text-xs font-extrabold text-indigo-400">📅 업데이트 기간 필터</span>
@@ -79,6 +79,14 @@
         <button onclick="setQuickRange(3)" id="range-3" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최근 3일</button>
         <button onclick="setQuickRange(7)" id="range-7" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최근 7일</button>
         <button onclick="setQuickRange(30)" id="range-30" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최근 30일</button>
+      </div>
+
+      <!-- 중복 방지: 받은 항목 숨기기 & 기록 관리 바 -->
+      <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
+        <button onclick="toggleHideDownloaded()" id="hide-dl-btn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-xl border bg-slate-800 border-slate-700 text-slate-300 transition active:scale-95">
+          🙈 받은 항목 숨기기: OFF
+        </button>
+        <span id="dl-total-label" class="text-[11px] font-bold text-emerald-400">완료 0건</span>
       </div>
     </div>
 
@@ -133,7 +141,7 @@
   </div>
 
   <!-- 토스트 알림 -->
-  <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg hidden z-50">
+  <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg hidden z-50 whitespace-nowrap">
     복사되었습니다!
   </div>
 
@@ -146,7 +154,137 @@
     let allItems = [];
     let savedItems = safeStore.get('pjav_saved_v2', []);
     let actressImgCache = safeStore.get('pjav_actress_img_v3', {});
+    // 다운로드 완료 기록 저장소: { byUrl: { url: { at, torrents: [] } }, byCode: { CODE: { at } } }
+    let downloadedData = safeStore.get('pjav_downloaded_v1', { byUrl: {}, byCode: {} });
+    if (!downloadedData.byUrl) downloadedData = { byUrl: {}, byCode: {} };
+
+    let hideDownloaded = safeStore.get('pjav_hide_dl', false) === true;
     let currentView = 'list';
+
+    function formatNowShort() {
+      const d = new Date();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mi = String(d.getMinutes()).padStart(2, '0');
+      return mm + '/' + dd + ' ' + hh + ':' + mi;
+    }
+
+    function getDownloadRecord(item) {
+      if (!item) return null;
+      if (item.url && downloadedData.byUrl[item.url]) return downloadedData.byUrl[item.url];
+      const code = extractWorkCode(item);
+      if (code && downloadedData.byCode[code]) return downloadedData.byCode[code];
+      return null;
+    }
+
+    function isTorrentDownloaded(item, t) {
+      const rec = item && item.url ? downloadedData.byUrl[item.url] : null;
+      if (!rec || !Array.isArray(rec.torrents)) return false;
+      const key = t.magnetUrl || t.downloadUrl || t.size || '';
+      return key ? rec.torrents.includes(key) : false;
+    }
+
+    function markItemDownloaded(item, torrentObj) {
+      const now = formatNowShort();
+      const code = extractWorkCode(item);
+      const tKey = torrentObj ? (torrentObj.magnetUrl || torrentObj.downloadUrl || torrentObj.size || '') : '';
+
+      if (!downloadedData.byUrl[item.url]) {
+        downloadedData.byUrl[item.url] = { at: now, torrents: [] };
+      } else {
+        downloadedData.byUrl[item.url].at = now;
+      }
+      if (tKey && !downloadedData.byUrl[item.url].torrents.includes(tKey)) {
+        downloadedData.byUrl[item.url].torrents.push(tKey);
+      }
+      if (code) {
+        downloadedData.byCode[code] = { at: now };
+      }
+      safeStore.set('pjav_downloaded_v1', downloadedData);
+    }
+
+    function unmarkItemDownloaded(item) {
+      if (item.url && downloadedData.byUrl[item.url]) {
+        delete downloadedData.byUrl[item.url];
+      }
+      const code = extractWorkCode(item);
+      if (code && downloadedData.byCode[code]) {
+        delete downloadedData.byCode[code];
+      }
+      safeStore.set('pjav_downloaded_v1', downloadedData);
+    }
+
+    // 다운로드 / 마그넷 / 복사 클릭 시 중복 확인 후 기록
+    function handleDownloadClick(ev, encodedUrl, torrentIdx, actionType) {
+      const url = decodeURIComponent(encodedUrl);
+      const item = allItems.find(i => i.url === url) || savedItems.find(i => i.url === url);
+      if (!item) return true;
+
+      const t = (item.torrents || [])[torrentIdx];
+      const existing = getDownloadRecord(item);
+
+      if (existing) {
+        const label = actionType === 'copy' ? '마그넷 복사' : '다운로드';
+        const ok = confirm('⚠️ 이미 [' + existing.at + ']에 다운로드한 작품입니다.\n중복으로 다시 ' + label + ' 하시겠습니까?');
+        if (!ok) {
+          if (ev) ev.preventDefault();
+          return false;
+        }
+      }
+
+      markItemDownloaded(item, t);
+
+      if (actionType === 'copy' && t && t.magnetUrl) {
+        if (ev) ev.preventDefault();
+        copyText(t.magnetUrl, '✅ 마그넷 복사 및 다운로드 완료 표시됨!');
+        renderItems();
+        return false;
+      }
+
+      showToast('✅ 다운로드 완료로 기록되었습니다!');
+      // 링크 실행을 방해하지 않도록 약간 뒤에 화면 갱신
+      setTimeout(renderItems, 180);
+      return true;
+    }
+
+    // 카드 상단 버튼으로 수동 완료/취소 토글
+    function toggleManualDownloaded(encodedUrl) {
+      const url = decodeURIComponent(encodedUrl);
+      const item = allItems.find(i => i.url === url) || savedItems.find(i => i.url === url);
+      if (!item) return;
+
+      if (getDownloadRecord(item)) {
+        if (confirm('이 작품의 다운로드 완료 표시를 해제할까요?')) {
+          unmarkItemDownloaded(item);
+          showToast('다운로드 완료 표시가 해제되었습니다.');
+          renderItems();
+        }
+      } else {
+        markItemDownloaded(item, null);
+        showToast('✅ 다운로드 완료로 표시되었습니다!');
+        renderItems();
+      }
+    }
+
+    function toggleHideDownloaded() {
+      hideDownloaded = !hideDownloaded;
+      safeStore.set('pjav_hide_dl', hideDownloaded);
+      updateHideDlButton();
+      renderItems();
+    }
+
+    function updateHideDlButton() {
+      const btn = document.getElementById('hide-dl-btn');
+      if (!btn) return;
+      if (hideDownloaded) {
+        btn.className = 'text-[11px] font-extrabold px-2.5 py-1.5 rounded-xl border bg-emerald-600 border-emerald-500 text-white shadow transition active:scale-95';
+        btn.textContent = '🙈 받은 항목 숨기기: ON';
+      } else {
+        btn.className = 'text-[11px] font-bold px-2.5 py-1.5 rounded-xl border bg-slate-800 border-slate-700 text-slate-300 transition active:scale-95';
+        btn.textContent = '🙈 받은 항목 숨기기: OFF';
+      }
+    }
 
     function isValidImageUrl(url) {
       if (!url || typeof url !== 'string') return false;
@@ -173,7 +311,8 @@
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.classList.remove('hidden');
-      setTimeout(() => t.classList.add('hidden'), 2000);
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => t.classList.add('hidden'), 2200);
     }
 
     function copyText(txt, label) {
@@ -190,7 +329,6 @@
       location.replace(base + '?v=' + Date.now());
     }
 
-    // 초강력 품번(Code) 추출기: 제목 + URL + 이미지 파일명 + 마그넷/토렌트 링크 전체 탐색
     function extractWorkCode(item) {
       if (item.code && item.code.length >= 4) return String(item.code).toUpperCase();
 
@@ -202,11 +340,9 @@
         decodeURIComponent(torrentStr)
       ].join(' ');
 
-      // 1순위: FC2 품번 (FC2-PPV-1234567)
       const fc2 = sources.match(/FC2[-_\s]*(?:PPV[-_\s]*)?(\d{5,8})/i);
       if (fc2) return 'FC2-PPV-' + fc2[1];
 
-      // 2순위: 표준 품번 (예: MUKA-011, STARS-912, SONE_123, T28-615 등)
       const ignorePrefixes = new Set(['HTTP', 'HTTPS', 'HTML', 'UTF', 'PAGE', 'MOVIE', 'VIDEO', 'POST', 'ITEM', 'IMAGE', 'THUMB', 'TORRENT', 'MAGNET', 'URN', 'BTIH', 'YEAR', 'DATE', 'WEBM', 'WEBP']);
       const stdMatches = sources.matchAll(/\b([A-Za-z]{2,6}|\d[A-Za-z]{1,4})[-_](\d{2,5}[A-Za-z]?)\b/g);
       for (const m of stdMatches) {
@@ -217,14 +353,10 @@
         }
       }
 
-      // 3순위: 제목 맨 앞 단어 또는 URL 슬러그의 첫 단어에서 영문+숫자 결합형(예: MUKA011) 추출
       const titleFirstWord = (item.title || '').trim().split(/\s+/)[0] || '';
       const compactMatch = titleFirstWord.match(/^([A-Za-z]{2,6})(\d{3,5})$/);
-      if (compactMatch) {
-        return compactMatch[1].toUpperCase() + '-' + compactMatch[2];
-      }
+      if (compactMatch) return compactMatch[1].toUpperCase() + '-' + compactMatch[2];
 
-      // 4순위: URL 마지막 경로(/movie/muka-011-dressing...)에서 첫 토큰 추출
       if (item.url) {
         const slug = item.url.split('/').filter(Boolean).pop() || '';
         const slugMatch = slug.match(/^([A-Za-z]{2,6})[-_]?(\d{2,5})/i);
@@ -233,11 +365,9 @@
         }
       }
 
-      // 5순위: 제목의 첫 단어가 숫자를 포함하고 있으면 그대로 코드로 표시
       if (/\d/.test(titleFirstWord) && titleFirstWord.length <= 14) {
         return titleFirstWord.toUpperCase();
       }
-
       return '';
     }
 
@@ -434,6 +564,7 @@
       safeStore.set('pjav_actress_img_v3', actressImgCache);
       statusEl.textContent = '⚡ 최근 수집: ' + (loadedData.updatedAt || '완료') + ' (' + allItems.length + '작품)';
       statusEl.className = 'text-[11px] text-emerald-400 font-bold';
+      updateHideDlButton();
       renderItems();
     }
 
@@ -526,7 +657,13 @@
       const endDate = document.getElementById('end-date').value;
       const source = currentView === 'saved' ? savedItems : allItems;
 
+      const dlCountInAll = allItems.filter(i => !!getDownloadRecord(i)).length;
+      document.getElementById('dl-total-label').textContent = '✅ 받음 ' + dlCountInAll + '건';
+
       const filtered = source.filter(i => {
+        if (hideDownloaded && currentView !== 'saved' && getDownloadRecord(i)) {
+          return false;
+        }
         if (currentView !== 'saved' && (startDate || endDate)) {
           const itemDate = parseNormalizedDate(i);
           if (itemDate) {
@@ -554,46 +691,58 @@
         const safeImg = getSafeImageUrl(item.thumb);
         const origImg = (item.thumb || '').replace(/'/g, "\\'");
         const isSaved = savedItems.some(s => s.url === item.url);
+        const dlRec = getDownloadRecord(item);
+        const isDownloaded = !!dlRec;
         const torrents = item.torrents || [];
         const normDate = parseNormalizedDate(item) || item.displayDate || item.date;
         const workCode = extractWorkCode(item);
+        const encUrl = encodeURIComponent(item.url);
 
-        // 제목에서 품번 중복 제거 후 깔끔하게 정리
         let cleanTitle = item.title || '';
         if (workCode && cleanTitle.toUpperCase().startsWith(workCode)) {
           cleanTitle = cleanTitle.slice(workCode.length).replace(/^[\s\-_:]+/, '');
         }
 
         return `
-          <article class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+          <article class="bg-slate-900 border ${isDownloaded ? 'border-emerald-600/70 opacity-80' : 'border-slate-800'} rounded-2xl overflow-hidden shadow-lg transition">
             ${safeImg ? `
               <div class="w-full bg-black relative">
-                <img src="${safeImg}" referrerpolicy="no-referrer" loading="lazy" onerror="handleImgError(this, '${origImg}')" class="w-full max-h-96 object-contain mx-auto">
+                <img src="${safeImg}" referrerpolicy="no-referrer" loading="lazy" onerror="handleImgError(this, '${origImg}')" class="w-full max-h-96 object-contain mx-auto ${isDownloaded ? 'brightness-75' : ''}">
                 ${workCode ? `
                   <button onclick="copyText('${workCode}', '📋 품번 [${workCode}] 복사됨!')" class="absolute top-2.5 left-2.5 bg-indigo-600 text-white font-mono font-extrabold text-sm px-3 py-1 rounded-xl shadow-lg border border-indigo-400/50 active:scale-95">
                     🏷️ ${workCode}
                   </button>
                 ` : ''}
+                ${isDownloaded ? `
+                  <span class="absolute top-2.5 right-2.5 bg-emerald-600/95 text-white font-extrabold text-xs px-2.5 py-1 rounded-xl shadow-lg border border-emerald-400/50">
+                    ✅ 받음 (${dlRec.at})
+                  </span>
+                ` : ''}
               </div>
             ` : ''}
 
             <div class="p-4 space-y-2.5">
-              <!-- 상단 품번(Code) 강조 바 + 날짜 + 보관 버튼 -->
-              <div class="flex items-center justify-between gap-2 bg-slate-950/80 border border-slate-800 px-3 py-2 rounded-xl">
-                <div class="flex items-center space-x-2">
-                  <button onclick="copyText('${workCode || item.title}', '📋 복사됨!')" class="bg-amber-500 text-slate-950 font-mono font-extrabold text-xs px-2.5 py-1 rounded-lg shadow active:scale-95">
-                    CODE: ${workCode || '자동추출'}
+              <!-- 상단 품번(Code) + 날짜 + 받음상태/보관 버튼 -->
+              <div class="flex items-center justify-between gap-1.5 bg-slate-950/80 border border-slate-800 px-2.5 py-2 rounded-xl">
+                <div class="flex items-center space-x-1.5 overflow-hidden">
+                  <button onclick="copyText('${workCode || item.title}', '📋 복사됨!')" class="bg-amber-500 text-slate-950 font-mono font-extrabold text-xs px-2 py-1 rounded-lg shadow active:scale-95 shrink-0">
+                    ${workCode || 'CODE'}
                   </button>
-                  <span class="text-xs font-bold text-slate-400">📅 ${normDate}</span>
+                  <span class="text-[11px] font-bold text-slate-400 truncate">📅 ${normDate}</span>
                 </div>
-                <button onclick="toggleSave('${encodeURIComponent(item.url)}')" class="shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold border ${isSaved ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}">
-                  ${isSaved ? '★ 저장됨' : '☆ 보관'}
-                </button>
+                <div class="flex items-center space-x-1 shrink-0">
+                  <button onclick="toggleManualDownloaded('${encUrl}')" class="px-2 py-1 rounded-lg text-[11px] font-extrabold border transition active:scale-95 ${isDownloaded ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400'}">
+                    ${isDownloaded ? '✅ 완료' : '⬜ 미받음'}
+                  </button>
+                  <button onclick="toggleSave('${encUrl}')" class="px-2 py-1 rounded-lg text-[11px] font-bold border ${isSaved ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}">
+                    ${isSaved ? '★' : '☆'}
+                  </button>
+                </div>
               </div>
 
-              <!-- 작품 제목 ([품번] + 제목 형태로 한 번 더 명시) -->
+              <!-- 작품 제목 -->
               <div>
-                <a href="${item.url}" target="_blank" class="font-extrabold text-base text-white hover:text-indigo-400 leading-snug break-words block">
+                <a href="${item.url}" target="_blank" class="font-extrabold text-base ${isDownloaded ? 'text-slate-400 line-through decoration-emerald-500/60' : 'text-white'} hover:text-indigo-400 leading-snug break-words block">
                   ${workCode ? `<span class="text-amber-400 font-mono mr-1">[${workCode}]</span>` : ''}${cleanTitle || item.title}
                 </a>
               </div>
@@ -617,19 +766,21 @@
 
               <!-- 하단 토렌트 Download & Magnet 목록 -->
               <div class="pt-2 border-t border-slate-800/80 space-y-2">
-                ${torrents.length > 0 ? torrents.map(t => `
-                  <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                ${torrents.length > 0 ? torrents.map((t, tIdx) => {
+                  const rowDone = isTorrentDownloaded(item, t);
+                  return `
+                  <div class="bg-slate-950/90 border ${rowDone ? 'border-emerald-700/70' : 'border-slate-800'} rounded-xl p-2.5 flex items-center justify-between gap-2">
                     <div class="flex items-center space-x-1.5 shrink-0">
                       ${t.downloadUrl ? `
-                        <a href="${t.downloadUrl}" target="_blank" download class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
-                          <span>📥</span><span>Download</span>
+                        <a href="${t.downloadUrl}" target="_blank" download onclick="return handleDownloadClick(event, '${encUrl}', ${tIdx}, 'download')" class="${rowDone ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'} active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
+                          <span>${rowDone ? '✅' : '📥'}</span><span>${rowDone ? '받음' : 'Download'}</span>
                         </a>
                       ` : ''}
                       ${t.magnetUrl ? `
-                        <a href="${t.magnetUrl}" class="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
-                          <span>🧲</span><span>Magnet</span>
+                        <a href="${t.magnetUrl}" onclick="return handleDownloadClick(event, '${encUrl}', ${tIdx}, 'magnet')" class="${rowDone ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-amber-600 hover:bg-amber-500'} active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
+                          <span>${rowDone ? '✅' : '🧲'}</span><span>${rowDone ? '받음' : 'Magnet'}</span>
                         </a>
-                        <button onclick="copyText('${t.magnetUrl.replace(/'/g, "\\'")}', '📋 마그넷 링크가 복사되었습니다!')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold px-2 py-1.5 rounded-lg">
+                        <button onclick="handleDownloadClick(event, '${encUrl}', ${tIdx}, 'copy')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold px-2 py-1.5 rounded-lg">
                           복사
                         </button>
                       ` : ''}
@@ -643,7 +794,8 @@
                       </div>
                     </div>
                   </div>
-                `).join('') : `
+                `;
+                }).join('') : `
                   <a href="${item.url}" target="_blank" class="block w-full text-center bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-2.5 rounded-xl">
                     🔗 원본 페이지에서 다운로드 확인
                   </a>
