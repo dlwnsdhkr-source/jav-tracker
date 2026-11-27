@@ -57,6 +57,38 @@ def extract_code(title, url):
         return f"{m.group(1).upper()}-{m.group(2).upper()}"
     return ""
 
+def extract_badges(text, node=None):
+    """AI Censored, AI Decensored, Decen 등 사이트 배지 텍스트 추출"""
+    badges = []
+    combined = text or ""
+
+    if node is not None:
+        for el in node.find_all(["span", "div", "a", "small", "button", "label"]):
+            cls = " ".join(el.get("class", [])).lower()
+            t = el.get_text(" ", strip=True)
+            if t and len(t) <= 25 and (
+                any(k in cls for k in ["badge", "label", "tag", "btn", "decen", "censor"])
+                or re.search(r"ai[\s\-_]*(?:de)?cen|decen|uncen|leaked", t, re.I)
+            ):
+                combined += " " + t
+
+    if re.search(r"\bai[\s\-_]*censored\b|\bai[\s\-_]*cen\b", combined, re.I):
+        badges.append("AI Censored")
+    if re.search(r"\bai[\s\-_]*decensored\b|\bai[\s\-_]*decen\b", combined, re.I):
+        badges.append("AI Decensored")
+    elif re.search(r"\bdecensored\b|\bdecen\b", combined, re.I):
+        badges.append("Decen")
+    if re.search(r"\buncensored\b|\buncen\b", combined, re.I):
+        badges.append("Uncensored")
+    if re.search(r"\bleaked?\b", combined, re.I):
+        badges.append("Leaked")
+    if re.search(r"\b(?:eng[\s\-_]*)?sub(?:bed|titles?)?\b", combined, re.I):
+        badges.append("Sub")
+    if re.search(r"\b4k\b", combined, re.I):
+        badges.append("4K")
+
+    return list(dict.fromkeys(badges))
+
 def extract_cover_image(card):
     for img in card.find_all("img"):
         for attr in ["data-src", "data-original", "data-lazy-src", "srcset", "src"]:
@@ -109,6 +141,7 @@ def extract_torrents_from_card(card):
             "seeds": seeds,
             "leeches": leeches,
             "date": date_m.group(1) if date_m else "",
+            "badges": extract_badges(row_text, row),
             "downloadUrl": paired_dl,
             "magnetUrl": href
         })
@@ -134,6 +167,7 @@ def extract_torrents_from_card(card):
                 "seeds": "",
                 "leeches": "",
                 "date": date_m.group(1) if date_m else "",
+                "badges": extract_badges(row_text, row),
                 "downloadUrl": full_dl,
                 "magnetUrl": ""
             })
@@ -195,6 +229,13 @@ def parse_page_items(html):
                 if tt not in tags:
                     tags.append(tt)
 
+        torrents = extract_torrents_from_card(best_card)
+        card_badges = extract_badges(card_text, best_card)
+        for t in torrents:
+            for b in t.get("badges", []):
+                if b not in card_badges:
+                    card_badges.append(b)
+
         seen_movies.add(movie_url)
         items.append({
             "code": extract_code(title, movie_url),
@@ -205,7 +246,8 @@ def parse_page_items(html):
             "thumb": extract_cover_image(best_card),
             "actress": actress[:4],
             "tags": tags[:8],
-            "torrents": extract_torrents_from_card(best_card)
+            "badges": card_badges,
+            "torrents": torrents
         })
 
     return items
@@ -215,7 +257,6 @@ def main():
         browser={"browser": "chrome", "platform": "windows", "mobile": False}
     )
 
-    # 1. 기존 data.json에 저장된 과거 작품 불러오기
     existing_items = []
     try:
         with open("data.json", "r", encoding="utf-8") as f:
@@ -224,7 +265,6 @@ def main():
     except Exception:
         existing_items = []
 
-    # 2. 최신 1~5페이지 새로 수집 (더 많이 원하면 range(1, 11) 등으로 숫자만 변경)
     new_items, seen = [], set()
     for p in range(1, 6):
         url = BASE_URL if p == 1 else f"{BASE_URL}/?page={p}"
@@ -239,7 +279,6 @@ def main():
     if len(new_items) == 0:
         raise RuntimeError("수집된 항목이 0건입니다. 사이트 차단 여부를 확인하세요.")
 
-    # 3. 새 작품을 맨 앞에 두고, 중복되지 않는 기존 작품을 뒤에 이어붙여 누적 (최대 1,000개 보관)
     merged_items = list(new_items)
     for old_item in existing_items:
         old_url = old_item.get("url")
