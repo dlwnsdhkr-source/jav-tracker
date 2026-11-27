@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>ProjectJAV 업데이터 v4.4</title>
+  <title>ProjectJAV 업데이터 v4.5</title>
 
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -41,7 +41,7 @@
         <div>
           <div class="flex items-center space-x-1.5">
             <h1 class="font-extrabold text-base text-white leading-tight">ProjectJAV 업데이터</h1>
-            <span class="text-[10px] bg-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded font-mono font-bold">v4.4</span>
+            <span class="text-[10px] bg-emerald-500/30 text-emerald-300 px-1.5 py-0.5 rounded font-mono font-bold">v4.5</span>
           </div>
           <p id="status-text" class="text-[11px] text-amber-400">앱 초기화 중...</p>
         </div>
@@ -57,11 +57,11 @@
 
     <!-- 검색창 -->
     <div class="relative">
-      <input type="text" id="search-input" oninput="renderItems()" placeholder="품번(예: MUKA-011), 배우명, 태그 검색..." class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-3.5 pr-9 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 outline-none">
+      <input type="text" id="search-input" oninput="renderItems()" placeholder="품번, 배우명, 태그, AI Censored 검색..." class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-3.5 pr-9 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 outline-none">
       <button onclick="clearSearch()" id="clear-search-btn" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-sm px-1">✕</button>
     </div>
 
-    <!-- 기간(시작일 ~ 종료일) + 다운로드 필터 박스 -->
+    <!-- 기간(시작일 ~ 종료일) + 다운로드 + AI Censored 필터 박스 -->
     <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2.5">
       <div class="flex items-center justify-between">
         <span class="text-xs font-extrabold text-indigo-400">📅 업데이트 기간 필터</span>
@@ -82,11 +82,16 @@
         <button onclick="setQuickRange(30)" id="range-30" class="range-btn px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">최근 30일</button>
       </div>
 
-      <!-- 중복 방지: 받은 항목 숨기기 & 기록 관리 바 -->
-      <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
-        <button onclick="toggleHideDownloaded()" id="hide-dl-btn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-xl border bg-slate-800 border-slate-700 text-slate-300 transition active:scale-95">
-          🙈 받은 항목 숨기기: OFF
-        </button>
+      <!-- 받은 항목 숨기기 & AI Censored 필터 바 -->
+      <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-800/80 flex-wrap">
+        <div class="flex items-center space-x-1.5">
+          <button onclick="toggleHideDownloaded()" id="hide-dl-btn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-xl border bg-slate-800 border-slate-700 text-slate-300 transition active:scale-95">
+            🙈 받은항목 숨김: OFF
+          </button>
+          <button onclick="toggleOnlyAiCensored()" id="ai-filter-btn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-xl border bg-slate-800 border-slate-700 text-slate-300 transition active:scale-95">
+            🤖 AI Censored만
+          </button>
+        </div>
         <span id="dl-total-label" class="text-[11px] font-bold text-emerald-400">완료 0건</span>
       </div>
     </div>
@@ -159,6 +164,7 @@
     if (!downloadedData.byUrl) downloadedData = { byUrl: {}, byCode: {} };
 
     let hideDownloaded = safeStore.get('pjav_hide_dl', false) === true;
+    let onlyAiCensored = false;
     let currentView = 'list';
 
     function formatNowShort() {
@@ -168,6 +174,33 @@
       const hh = String(d.getHours()).padStart(2, '0');
       const mi = String(d.getMinutes()).padStart(2, '0');
       return mm + '/' + dd + ' ' + hh + ':' + mi;
+    }
+
+    // 작품의 배지 목록 수집 (data.json badges + 토렌트 badges + 제목/태그 텍스트 감지)
+    function getItemBadges(item) {
+      const set = new Set();
+      (item.badges || []).forEach(b => set.add(b));
+      (item.torrents || []).forEach(t => (t.badges || []).forEach(b => set.add(b)));
+
+      const fallbackText = (item.title || '') + ' ' + (item.tags || []).join(' ');
+      if (/\bai[\s\-_]*censored\b|\bai[\s\-_]*cen\b/i.test(fallbackText)) set.add('AI Censored');
+      if (/\bai[\s\-_]*decensored\b|\bai[\s\-_]*decen\b/i.test(fallbackText)) set.add('AI Decensored');
+      return Array.from(set);
+    }
+
+    function renderBadgeChip(badge, small = false) {
+      const low = badge.toLowerCase();
+      const pad = small ? 'text-[10px] px-1.5 py-0.5' : 'text-[11px] px-2 py-0.5';
+      if (low.includes('ai censored')) {
+        return `<span class="${pad} rounded-md font-extrabold bg-fuchsia-600/90 text-white border border-fuchsia-400/60 shadow-sm">🤖 AI Censored</span>`;
+      }
+      if (low.includes('ai decen')) {
+        return `<span class="${pad} rounded-md font-extrabold bg-purple-600/80 text-purple-100 border border-purple-400/50">🤖 AI Decen</span>`;
+      }
+      if (low === 'decen' || low.includes('uncen')) {
+        return `<span class="${pad} rounded-md font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">✨ ${badge}</span>`;
+      }
+      return `<span class="${pad} rounded-md font-bold bg-slate-800 text-slate-300 border border-slate-700">${badge}</span>`;
     }
 
     function getDownloadRecord(item) {
@@ -205,17 +238,12 @@
     }
 
     function unmarkItemDownloaded(item) {
-      if (item.url && downloadedData.byUrl[item.url]) {
-        delete downloadedData.byUrl[item.url];
-      }
+      if (item.url && downloadedData.byUrl[item.url]) delete downloadedData.byUrl[item.url];
       const code = extractWorkCode(item);
-      if (code && downloadedData.byCode[code]) {
-        delete downloadedData.byCode[code];
-      }
+      if (code && downloadedData.byCode[code]) delete downloadedData.byCode[code];
       safeStore.set('pjav_downloaded_v1', downloadedData);
     }
 
-    // 전체 목록을 새로고침하지 않고 해당 카드만 제자리에서 UI 업데이트 (스크롤 밀림 완전 방지)
     function updateCardDownloadUI(item) {
       const dlCountInAll = allItems.filter(i => !!getDownloadRecord(i)).length;
       const dlLabel = document.getElementById('dl-total-label');
@@ -237,12 +265,10 @@
         const dlRec = getDownloadRecord(cardItem);
         const isDone = !!dlRec;
 
-        // 1. 카드 테두리 및 투명도
         card.classList.toggle('border-emerald-600/70', isDone);
         card.classList.toggle('opacity-80', isDone);
         card.classList.toggle('border-slate-800', !isDone);
 
-        // 2. 커버 이미지 밝기 & 우측 상단 완료 배지 (이미지 재로드 없음)
         const coverImg = card.querySelector('.card-cover-img');
         if (coverImg) coverImg.classList.toggle('brightness-75', isDone);
 
@@ -256,7 +282,6 @@
           }
         }
 
-        // 3. 상단 완료/미받음 버튼
         const toggleBtn = card.querySelector('.card-dl-toggle');
         if (toggleBtn) {
           toggleBtn.textContent = isDone ? '✅ 완료' : '⬜ 미받음';
@@ -264,7 +289,6 @@
             (isDone ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-400');
         }
 
-        // 4. 작품 제목 취소선
         const titleLink = card.querySelector('.card-title-link');
         if (titleLink) {
           titleLink.classList.toggle('text-slate-400', isDone);
@@ -273,7 +297,6 @@
           titleLink.classList.toggle('text-white', !isDone);
         }
 
-        // 5. 개별 토렌트/마그넷 버튼 상태 업데이트
         const torrents = cardItem.torrents || [];
         card.querySelectorAll('.torrent-row').forEach(row => {
           const idx = Number(row.getAttribute('data-t-idx'));
@@ -350,19 +373,31 @@
     function toggleHideDownloaded() {
       hideDownloaded = !hideDownloaded;
       safeStore.set('pjav_hide_dl', hideDownloaded);
-      updateHideDlButton();
+      updateFilterToggleButtons();
       renderItems();
     }
 
-    function updateHideDlButton() {
-      const btn = document.getElementById('hide-dl-btn');
-      if (!btn) return;
-      if (hideDownloaded) {
-        btn.className = 'text-[11px] font-extrabold px-2.5 py-1.5 rounded-xl border bg-emerald-600 border-emerald-500 text-white shadow transition active:scale-95';
-        btn.textContent = '🙈 받은 항목 숨기기: ON';
-      } else {
-        btn.className = 'text-[11px] font-bold px-2.5 py-1.5 rounded-xl border bg-slate-800 border-slate-700 text-slate-300 transition active:scale-95';
-        btn.textContent = '🙈 받은 항목 숨기기: OFF';
+    function toggleOnlyAiCensored() {
+      onlyAiCensored = !onlyAiCensored;
+      updateFilterToggleButtons();
+      renderItems();
+    }
+
+    function updateFilterToggleButtons() {
+      const dlBtn = document.getElementById('hide-dl-btn');
+      if (dlBtn) {
+        dlBtn.className = hideDownloaded
+          ? 'text-[11px] font-extrabold px-2.5 py-1.5 rounded-xl border bg-emerald-600 border-emerald-500 text-white shadow transition active:scale-95'
+          : 'text-[11px] font-bold px-2.5 py-1.5 rounded-xl border bg-slate-800 border-slate-700 text-slate-300 transition active:scale-95';
+        dlBtn.textContent = hideDownloaded ? '🙈 받은항목 숨김: ON' : '🙈 받은항목 숨김: OFF';
+      }
+
+      const aiBtn = document.getElementById('ai-filter-btn');
+      if (aiBtn) {
+        aiBtn.className = onlyAiCensored
+          ? 'text-[11px] font-extrabold px-2.5 py-1.5 rounded-xl border bg-fuchsia-600 border-fuchsia-400 text-white shadow transition active:scale-95'
+          : 'text-[11px] font-bold px-2.5 py-1.5 rounded-xl border bg-slate-800 border-slate-700 text-slate-300 transition active:scale-95';
+        aiBtn.textContent = onlyAiCensored ? '🤖 AI Censored만: ON' : '🤖 AI Censored만';
       }
     }
 
@@ -620,9 +655,9 @@
         if (torrents.length === 0 && Array.isArray(item.files)) {
           item.files.forEach(f => {
             if (f.url && f.url.startsWith('magnet:')) {
-              torrents.push({ size: f.label || '마그넷', seeds: '', leeches: '', date: '', downloadUrl: '', magnetUrl: f.url });
+              torrents.push({ size: f.label || '마그넷', seeds: '', leeches: '', date: '', badges: [], downloadUrl: '', magnetUrl: f.url });
             } else if (f.url) {
-              torrents.push({ size: f.label || '토렌트', seeds: '', leeches: '', date: '', downloadUrl: f.url, magnetUrl: '' });
+              torrents.push({ size: f.label || '토렌트', seeds: '', leeches: '', date: '', badges: [], downloadUrl: f.url, magnetUrl: '' });
             }
           });
         }
@@ -635,6 +670,7 @@
           thumb: cleanThumb,
           actress: Array.isArray(item.actress) ? item.actress : [],
           tags: Array.isArray(item.tags) ? item.tags : [],
+          badges: Array.isArray(item.badges) ? item.badges : [],
           torrents: torrents
         };
         tempObj.code = extractWorkCode(tempObj);
@@ -644,7 +680,7 @@
       safeStore.set('pjav_actress_img_v3', actressImgCache);
       statusEl.textContent = '⚡ 최근 수집: ' + (loadedData.updatedAt || '완료') + ' (' + allItems.length + '작품)';
       statusEl.className = 'text-[11px] text-emerald-400 font-bold';
-      updateHideDlButton();
+      updateFilterToggleButtons();
       renderItems();
     }
 
@@ -712,7 +748,6 @@
       document.getElementById('actress-modal').classList.add('hidden');
     }
 
-    // 보관함 저장도 전체 새로고침 없이 버튼만 제자리에서 업데이트
     function toggleSave(encodedUrl) {
       const url = decodeURIComponent(encodedUrl);
       const item = allItems.find(i => i.url === url) || savedItems.find(i => i.url === url);
@@ -761,6 +796,10 @@
         if (hideDownloaded && currentView !== 'saved' && getDownloadRecord(i)) {
           return false;
         }
+        const itemBadges = getItemBadges(i);
+        if (onlyAiCensored && !itemBadges.some(b => b.toLowerCase().includes('ai censored'))) {
+          return false;
+        }
         if (currentView !== 'saved' && (startDate || endDate)) {
           const itemDate = parseNormalizedDate(i);
           if (itemDate) {
@@ -769,7 +808,7 @@
           }
         }
         const code = extractWorkCode(i);
-        const hay = (code + ' ' + i.title + ' ' + (i.actress || []).join(' ') + ' ' + (i.tags || []).join(' ') + ' ' + i.date).toLowerCase();
+        const hay = (code + ' ' + i.title + ' ' + (i.actress || []).join(' ') + ' ' + (i.tags || []).join(' ') + ' ' + itemBadges.join(' ') + ' ' + i.date).toLowerCase();
         return !query || hay.includes(query);
       });
 
@@ -794,6 +833,8 @@
         const normDate = parseNormalizedDate(item) || item.displayDate || item.date;
         const workCode = extractWorkCode(item);
         const encUrl = encodeURIComponent(item.url);
+        const itemBadges = getItemBadges(item);
+        const hasAiCensored = itemBadges.some(b => b.toLowerCase().includes('ai censored'));
 
         let cleanTitle = item.title || '';
         if (workCode && cleanTitle.toUpperCase().startsWith(workCode)) {
@@ -809,6 +850,11 @@
                   <button onclick="copyText('${workCode}', '📋 품번 [${workCode}] 복사됨!')" class="absolute top-2.5 left-2.5 bg-indigo-600 text-white font-mono font-extrabold text-sm px-3 py-1 rounded-xl shadow-lg border border-indigo-400/50 active:scale-95">
                     🏷️ ${workCode}
                   </button>
+                ` : ''}
+                ${hasAiCensored ? `
+                  <span class="absolute bottom-2.5 left-2.5 bg-fuchsia-600/95 text-white font-extrabold text-xs px-2.5 py-1 rounded-xl shadow-lg border border-fuchsia-300/60">
+                    🤖 AI Censored
+                  </span>
                 ` : ''}
                 <span class="card-dl-badge absolute top-2.5 right-2.5 bg-emerald-600/95 text-white font-extrabold text-xs px-2.5 py-1 rounded-xl shadow-lg border border-emerald-400/50 ${isDownloaded ? '' : 'hidden'}">
                   ${isDownloaded ? '✅ 받음 (' + dlRec.at + ')' : ''}
@@ -835,6 +881,13 @@
                 </div>
               </div>
 
+              <!-- 작품 배지(AI Censored, Decen 등) -->
+              ${itemBadges.length > 0 ? `
+                <div class="flex flex-wrap gap-1.5">
+                  ${itemBadges.map(b => renderBadgeChip(b, false)).join('')}
+                </div>
+              ` : ''}
+
               <!-- 작품 제목 -->
               <div>
                 <a href="${item.url}" target="_blank" class="card-title-link font-extrabold text-base ${isDownloaded ? 'text-slate-400 line-through decoration-emerald-500/60' : 'text-white'} hover:text-indigo-400 leading-snug break-words block">
@@ -859,35 +912,43 @@
                 </div>
               ` : ''}
 
-              <!-- 하단 토렌트 Download & Magnet 목록 -->
+              <!-- 하단 토렌트 Download & Magnet 목록 (행별 AI Censored / Decen 배지 포함) -->
               <div class="pt-2 border-t border-slate-800/80 space-y-2">
                 ${torrents.length > 0 ? torrents.map((t, tIdx) => {
                   const rowDone = isTorrentDownloaded(item, t);
+                  const rowBadges = Array.isArray(t.badges) ? t.badges : [];
                   return `
-                  <div data-t-idx="${tIdx}" class="torrent-row bg-slate-950/90 border ${rowDone ? 'border-emerald-700/70' : 'border-slate-800'} rounded-xl p-2.5 flex items-center justify-between gap-2">
-                    <div class="flex items-center space-x-1.5 shrink-0">
-                      ${t.downloadUrl ? `
-                        <a href="${t.downloadUrl}" target="_blank" download onclick="return handleDownloadClick(event, '${encUrl}', ${tIdx}, 'download')" class="t-dl-btn ${rowDone ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'} active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
-                          <span>${rowDone ? '✅' : '📥'}</span><span>${rowDone ? '받음' : 'Download'}</span>
-                        </a>
-                      ` : ''}
-                      ${t.magnetUrl ? `
-                        <a href="${t.magnetUrl}" onclick="return handleDownloadClick(event, '${encUrl}', ${tIdx}, 'magnet')" class="t-mag-btn ${rowDone ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-amber-600 hover:bg-amber-500'} active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
-                          <span>${rowDone ? '✅' : '🧲'}</span><span>${rowDone ? '받음' : 'Magnet'}</span>
-                        </a>
-                        <button onclick="handleDownloadClick(event, '${encUrl}', ${tIdx}, 'copy')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold px-2 py-1.5 rounded-lg">
-                          복사
-                        </button>
-                      ` : ''}
-                    </div>
-                    <div class="text-right text-[11px] leading-tight">
-                      <div class="font-extrabold text-emerald-400">${t.size || ''}</div>
-                      <div class="text-slate-400">
-                        ${t.seeds ? '<span class="text-sky-400">S:' + t.seeds + '</span> ' : ''}
-                        ${t.leeches ? '<span class="text-amber-400">L:' + t.leeches + '</span> ' : ''}
-                        ${t.date ? '<span>' + t.date + '</span>' : ''}
+                  <div data-t-idx="${tIdx}" class="torrent-row bg-slate-950/90 border ${rowDone ? 'border-emerald-700/70' : 'border-slate-800'} rounded-xl p-2.5 space-y-1.5">
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="flex items-center space-x-1.5 shrink-0">
+                        ${t.downloadUrl ? `
+                          <a href="${t.downloadUrl}" target="_blank" download onclick="return handleDownloadClick(event, '${encUrl}', ${tIdx}, 'download')" class="t-dl-btn ${rowDone ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'} active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
+                            <span>${rowDone ? '✅' : '📥'}</span><span>${rowDone ? '받음' : 'Download'}</span>
+                          </a>
+                        ` : ''}
+                        ${t.magnetUrl ? `
+                          <a href="${t.magnetUrl}" onclick="return handleDownloadClick(event, '${encUrl}', ${tIdx}, 'magnet')" class="t-mag-btn ${rowDone ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-amber-600 hover:bg-amber-500'} active:scale-95 text-white text-xs font-extrabold px-2.5 py-1.5 rounded-lg flex items-center space-x-1">
+                            <span>${rowDone ? '✅' : '🧲'}</span><span>${rowDone ? '받음' : 'Magnet'}</span>
+                          </a>
+                          <button onclick="handleDownloadClick(event, '${encUrl}', ${tIdx}, 'copy')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold px-2 py-1.5 rounded-lg">
+                            복사
+                          </button>
+                        ` : ''}
+                      </div>
+                      <div class="text-right text-[11px] leading-tight">
+                        <div class="font-extrabold text-emerald-400">${t.size || ''}</div>
+                        <div class="text-slate-400">
+                          ${t.seeds ? '<span class="text-sky-400">S:' + t.seeds + '</span> ' : ''}
+                          ${t.leeches ? '<span class="text-amber-400">L:' + t.leeches + '</span> ' : ''}
+                          ${t.date ? '<span>' + t.date + '</span>' : ''}
+                        </div>
                       </div>
                     </div>
+                    ${rowBadges.length > 0 ? `
+                      <div class="flex flex-wrap gap-1 pt-0.5">
+                        ${rowBadges.map(b => renderBadgeChip(b, true)).join('')}
+                      </div>
+                    ` : ''}
                   </div>
                 `;
                 }).join('') : `
